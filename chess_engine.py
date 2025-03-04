@@ -1,59 +1,32 @@
+"""
+Chess engine using minimax algorithm with alpha-beta pruning
+"""
+
 import chess
 import math
 import sys
+from validations.init_validation import evaluate_board
 
-class ChessEngine:
-    def __init__(self, fen: str):
-        """
-        Khởi tạo ChessEngine với bàn cờ từ FEN.
-        :param fen: FEN string đại diện cho bàn cờ.
-        """
-        self.board = chess.Board(fen)
-
-    def evaluate_board(self):
-        """
-        Đánh giá bàn cờ dựa trên giá trị quân cờ.
-        :return: Điểm đánh giá của bàn cờ.
-        """
-        piece_values = {
-            chess.PAWN: 1, 
-            chess.KNIGHT: 3, 
-            chess.BISHOP: 3,
-            chess.ROOK: 5, 
-            chess.QUEEN: 9, 
-            chess.KING: 1000
-        }
-        score = 0
-        for square in chess.SQUARES:
-            piece = self.board.piece_at(square)
-            if piece:
-                value = piece_values[piece.piece_type]
-                if piece.color == chess.WHITE:
-                    score += value
-                else:
-                    score -= value
-        return score
-
-    def get_legal_moves(self):
-        """
-        Lấy tất cả các nước đi hợp lệ cho bàn cờ hiện tại.
-        :return: Danh sách các nước đi hợp lệ.
-        """
-        return list(self.board.legal_moves)
-
-
-def minimax(board, depth, alpha, beta, maximizing_player):
+def minimax(board: chess.Board, 
+            depth: int, 
+            alpha: float, 
+            beta: float, 
+            maximizing_player: bool) -> float:
     """
-    Thuật toán Minimax với Alpha-Beta Pruning.
-    :param board: Bàn cờ hiện tại.
-    :param depth: Độ sâu tìm kiếm.
-    :param alpha: Giá trị Alpha (dùng cho pruning).
-    :param beta: Giá trị Beta (dùng cho pruning).
-    :param maximizing_player: Boolean, True nếu là lượt của người chơi tối đa (trắng).
-    :return: Giá trị của bàn cờ ở mức độ sâu hiện tại.
+    Minimax algorithm with alpha-beta pruning
+    
+    Args:
+    - board: chess.Board
+    - depth: int
+    - alpha: float
+    - beta: float
+    - maximizing_player: bool
+    
+    Returns:
+    - float
     """
     if depth == 0 or board.is_game_over():
-        return ChessEngine(board.fen()).evaluate_board()  # Đánh giá bàn cờ tại leaf node
+        return evaluate_board(board.fen())
 
     legal_moves = list(board.legal_moves)
 
@@ -81,12 +54,16 @@ def minimax(board, depth, alpha, beta, maximizing_player):
         return min_eval
 
 
-def find_best_move(fen: str, depth: int):
+def find_best_move(fen: str, depth: int) -> str:
     """
-    Tìm nước đi tốt nhất cho bàn cờ dựa trên FEN và độ sâu tìm kiếm.
-    :param fen: FEN string đại diện cho bàn cờ.
-    :param depth: Độ sâu tìm kiếm.
-    :return: Nước đi tốt nhất trong định dạng UCI.
+    Find the best move using minimax algorithm
+    
+    Args:
+    - fen: str
+    - depth: int
+    
+    Returns:
+    - str
     """
     board = chess.Board(fen)
     best_move = None
@@ -104,12 +81,16 @@ def find_best_move(fen: str, depth: int):
 
     return best_move.uci() if best_move else None
 
+"""
+Usage:
+$ python chess_engine.py "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" 3
 
-# Nếu đây là file chính, chạy chức năng tìm nước đi tốt nhất từ FEN và độ sâu.
+Output:
+g1f3
+"""
 if __name__ == "__main__":
-    # Lấy FEN và độ sâu từ dòng lệnh
-    fen = sys.argv[1]  # FEN bàn cờ
-    depth = int(sys.argv[2])  # Độ sâu tìm kiếm
+    fen = sys.argv[1]
+    depth = int(sys.argv[2])
 
     best_move = find_best_move(fen, depth)
-    print(best_move)  # In ra nước đi tốt nhất
+    print(best_move)

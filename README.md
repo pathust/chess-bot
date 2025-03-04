@@ -47,10 +47,16 @@ pip install -r requirements.txt
 Để khởi chạy ứng dụng với chế độ tự động tải lại khi có thay đổi, sử dụng lệnh:
 
 ```bash
-uvicorn api::app.py --reload
+uvicorn api:app --reload
 ```
 
 Ứng dụng sẽ chạy mặc định tại địa chỉ: http://127.0.0.1:8000
+
+Nếu muốn chuyển sang port khác thì dùng lệnh sau
+
+```bash
+uvicorn api:app --reload --port <chọn port (ví dụ: 8080)>   
+```
 
 ## API Endpoints
 

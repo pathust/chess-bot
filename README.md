@@ -70,32 +70,3 @@ Bạn cũng có thể sử dụng giao diện Swagger bằng cách thêm ```/doc
 |---------|------|-------|
 | fen | string (query) | Trạng thái bàn cờ ở dạng FEN (Forsyth-Edwards Notation) |
 | depth | integer (query, optional) | Độ sâu tìm kiếm, mặc định là 3 |
-
-## Cấu trúc dự án
-
-```
-chess-bot/
-│
-├── api/
-│   └── app.py        # Ứng dụng FastAPI (mã được cung cấp)
-│
-├── chess_engine.py   # Chess engine để tính toán nước đi tốt nhất
-│
-├── requirements.txt  # File yêu cầu các gói phụ thuộc
-└── README.md         # File này
-```
-
-## File requirements.txt
-
-```
-fastapi>=0.68.0
-uvicorn>=0.15.0
-```
-
-## Đóng góp
-
-Mọi đóng góp đều được chào đón! Hãy tạo issue hoặc pull request để đóng góp vào dự án.
-
-## Giấy phép
-
-Dự án này được phân phối dưới giấy phép MIT. Xem file `LICENSE` để biết thêm chi tiết.

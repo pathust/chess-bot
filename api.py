@@ -5,6 +5,12 @@ app = FastAPI()
 
 @app.post("/move/")
 def get_best_move(fen: str, depth: int = 3):
+    """
+    API endpoint to get the best move for a given chess position (FEN) and search depth.
+    :param fen: FEN string representing the chess board.
+    :param depth: Depth of the minimax search.
+    :return: The best move in UCI format.
+    """
     try:
         # Gọi chess_engine.py như một process riêng biệt và truyền FEN cùng depth
         result = subprocess.run(

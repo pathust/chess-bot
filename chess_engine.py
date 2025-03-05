@@ -5,7 +5,7 @@ Chess engine using minimax algorithm with alpha-beta pruning
 import chess
 import math
 import sys
-from validations.init_validation import evaluate_board
+from evaluation.init_evaluation import evaluate_board
 
 def minimax(board: chess.Board, 
             depth: int, 

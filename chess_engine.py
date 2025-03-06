@@ -7,8 +7,90 @@ import math
 import sys
 from evaluation.init_evaluation import evaluate_board
 
+def possible_null_move(board: chess.Board ) -> bool:
+    """Hàm kiểm tra xem có thể thực hiện nullMove không""" 
+
+    #the previous move in the search was also a null move.
+    if board.peek() is chess.Move.null():
+        return False
+    #the side to move is in check
+    if board.is_check():
+        return False
+    other = False
+    number_pieces = 0
+    #the side to move has only its king and pawns remaining
+    #the side to move has a small number of pieces remaining
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece:
+            if piece.color == board.turn:
+                number_pieces+=1  
+            if(piece.piece_type!=chess.PAWN and piece.piece_type != chess.KING):
+                other = True
+    return other and (number_pieces>4)
+
+def null_move_search(board: chess.Board,
+                    depth: int,
+                    alpha: float,
+                    beta: float) -> float:
+    """hàm thực hiện null move"""
+
+    #khi không thể nullmove thì trả về âm vô cùng
+    if( not possible_null_move() ):
+        return  -math.inf    
+    if depth <= 0:
+        return evaluate_board(board)
+    
+    board.push(chess.Move.null)
+    #theo các báo cáo R=3 là giá trị tối ưu cho null movemove
+    eval = minimax(board, depth - 3, alpha, beta, False)
+    board.pop()
+    alpha = max(alpha, eval)
+    return eval   
+
+def quiescence_search(board: chess.Board,  
+                    alpha: float,
+                    beta: float,
+                    depth: int,
+                    maximizing: bool) -> float:
+    """sử dụng sau khi đạt được depth =0"""
+    """dừng khi game kết thúc hoặc đạt đến depth giới hạn(tránh stack overflow)"""
+
+    if board.is_game_over():
+        return evaluate_board(board)
+    legal_moves = list(board.legal_moves)
+    continue_search = False
+    if maximizing:
+        max_eval = -math.inf
+        for move in legal_moves:
+            if(board.gives_check(move) or board.is_capture(move)):
+                continue_search = True
+                board.push(move)
+                eval = quiescence_search(board, alpha, beta, depth-1 , False)
+                board.pop()
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+        return max_eval
+    else:
+        min_eval = math.inf
+        for move in legal_moves:
+            if(board.is_capture(move)):    
+                continue_search = True        
+                board.push(move)
+                eval = quiescence_search(board, alpha, beta, depth-1, True)
+                board.pop()
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break  # Cắt tỉa
+        return min_eval
+
+
 def minimax(board: chess.Board, 
             depth: int, 
+            #quiescense_depth:int
             alpha: float, 
             beta: float, 
             maximizing_player: bool) -> float:
@@ -25,13 +107,15 @@ def minimax(board: chess.Board,
     Returns:
     - float
     """
-    if depth == 0 or board.is_game_over():
+    if board.is_game_over():
         return evaluate_board(board.fen())
-
+    if depth == 0:
+        quiescence_search(board, alpha, beta, 5, maximizing_player)
+        #thay 5 bang quiescense_depth(phu thuoc vao depth cua minimax)
     legal_moves = list(board.legal_moves)
 
     if maximizing_player:
-        max_eval = -math.inf
+        max_eval = null_move_search(board, depth, alpha,beta)
         for move in legal_moves:
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, False)

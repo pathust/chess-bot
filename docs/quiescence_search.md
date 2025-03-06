@@ -1,24 +1,26 @@
 ### -Định nghĩa
-+)Horizon problem: Trong trường hợp nếu đi thêm 1 bước nữa sẽ là nước đẹp(Ex: chiếu tướng hết cờ) nhưng ở nước kết thúc tìm kiếm đang là 1 nước xấu. Nếu cứ tăng depth lên vẫn gặp với mức depth+1  
---> Thực hiện việc search những nước đi có tỉ lệ cao tạo đột biến khi depth = 0  
-+)quiescence_search: khi depth = 0, thuật toán search chính sẽ dừng tìm kiếm, chuyển sang vét các nước có tỉ lệ cao tạo đột biến.
-
++) Horizon problem: Trong trường hợp nếu đi thêm 1 bước nữa sẽ là nước đẹp (Ví dụ: chiếu hết), nhưng ở nước kết thúc tìm kiếm lại là một nước xấu. Nếu tiếp tục tăng độ sâu tìm kiếm vẫn gặp vấn đề tương tự ở mức depth+1.  
+--> Thực hiện việc tìm kiếm những nước đi có tỷ lệ cao tạo đột biến khi depth = 0.  
++) Quiescence search: Khi depth = 0, thuật toán tìm kiếm chính sẽ dừng lại và chuyển sang vét các nước đi có tỷ lệ cao tạo đột biến.
 
 ### Các nước đi được kiểm tra gồm:  
-    -) các nước đi chiếu  
-    -) các nước ăn quân  
-    -) các nước phong cấp  
+    -) Các nước đi chiếu  
+    -) Các nước ăn quân  
+    -) Các nước phong cấp  
 
 ### Vấn đề:
--) Tìm kiếm quá sâu gây áp lực nên bộ nhớ, khả năng tính toán.   
--) chưa tính đến các nước phòng thủ    
-### References:  
-https://en.wikipedia.org/wiki/Quiescence_search
+-) Tìm kiếm quá sâu gây áp lực lên bộ nhớ và khả năng tính toán.  
+-) Chưa tính đến các nước phòng thủ.  
 
-quiescence_search
-khi depth = 0, thuật toán sẽ dừng tìm kiếm:
+### Tài liệu tham khảo:  
+https://en.wikipedia.org/wiki/Quiescence_search  
 
-## Advance Quiescence (Zzzzzz#Quiescence)   
-When a piece captures, a capture flag is set on that piece. In the quiescence I allow QUIES_MAX free captures (so any piece may capture any other piece), but after these QUIES_MAX free captures only captures to pieces with the capture flag set are allowed. In this way the quiescence search always terminates and many exchanges like 'I capture your queen, you capture my queen etc.' are evaluated correctly. Higher QUIES_MAX values give better results, but also makes the program slower, so there is a trade off here. In ZZZZZZ the quiescence search hardly takes time: the quiescence search usually already terminates after the first eval() call (depth = 0) (an evaluation you would have to do any way) and only about 10% of the eval() calls come from deeper inner nodes. I also experimented with null moves in the quiescence search, but that did not help much.  
-### References:
-https://www.chessprogramming.org/Zzzzzz#Quiescence
+---
+
+## Advance Quiescence (Zzzzzz#Quiescence)  
+Khi một quân cờ thực hiện nước ăn quân, một cờ đánh dấu (capture flag) được đặt trên quân cờ đó. Trong thuật toán quiescence, tôi cho phép **QUIES_MAX** số nước ăn quân miễn phí (tức là bất kỳ quân nào cũng có thể ăn quân khác). Tuy nhiên, sau khi vượt qua giới hạn **QUIES_MAX**, chỉ những nước ăn quân vào các quân có cờ đánh dấu mới được phép tiếp tục. Cách này giúp thuật toán quiescence luôn kết thúc và nhiều chuỗi trao đổi như "tôi ăn hậu của bạn, bạn ăn hậu của tôi, v.v." được đánh giá chính xác.  
+
+Giá trị **QUIES_MAX** càng cao thì kết quả càng tốt, nhưng đồng thời cũng làm chậm chương trình, do đó có một sự đánh đổi giữa độ chính xác và tốc độ. Trong **ZZZZZZ**, thuật toán quiescence hầu như không mất nhiều thời gian: thuật toán thường kết thúc ngay sau lần gọi **eval()** đầu tiên (depth = 0) (đánh giá mà dù sao cũng phải thực hiện), và chỉ khoảng 10% các lần gọi **eval()** đến từ các nút bên trong sâu hơn. Tôi cũng đã thử nghiệm với nước đi null-move trong quiescence search, nhưng không đem lại hiệu quả đáng kể.  
+
+### Tài liệu tham khảo:  
+https://www.chessprogramming.org/Zzzzzz#Quiescence  

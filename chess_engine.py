@@ -2,9 +2,9 @@
 Chess engine using minimax algorithm with alpha-beta pruning
 """
 
-import chess
 import math
 import sys
+import chess
 from evaluation.init_evaluation import evaluate_board
 
 def possible_null_move(board: chess.Board ) -> bool:
@@ -24,8 +24,8 @@ def possible_null_move(board: chess.Board ) -> bool:
         piece = board.piece_at(square)
         if piece:
             if piece.color == board.turn:
-                number_pieces+=1  
-            if(piece.piece_type!=chess.PAWN and piece.piece_type != chess.KING):
+                number_pieces+=1
+            if piece.piece_type != chess.PAWN and piece.piece_type != chess.KING:
                 other = True
     return other and (number_pieces>4)
 
@@ -36,17 +36,17 @@ def null_move_search(board: chess.Board,
     """hàm thực hiện null move"""
 
     #khi không thể nullmove thì trả về âm vô cùng
-    if( not possible_null_move() ):
-        return  -math.inf    
+    if not possible_null_move(board):
+        return  -math.inf
     if depth <= 0:
         return evaluate_board(board)
-    
+
     board.push(chess.Move.null)
     #theo các báo cáo R=3 là giá trị tối ưu cho null movemove
     eval = minimax(board, depth - 3, alpha, beta, False)
     board.pop()
     alpha = max(alpha, eval)
-    return eval   
+    return eval
 
 def quiescence_search(board: chess.Board,  
                     alpha: float,
@@ -59,12 +59,10 @@ def quiescence_search(board: chess.Board,
     if board.is_game_over():
         return evaluate_board(board)
     legal_moves = list(board.legal_moves)
-    continue_search = False
     if maximizing:
         max_eval = -math.inf
         for move in legal_moves:
             if(board.gives_check(move) or board.is_capture(move)):
-                continue_search = True
                 board.push(move)
                 eval = quiescence_search(board, alpha, beta, depth-1 , False)
                 board.pop()
@@ -77,7 +75,6 @@ def quiescence_search(board: chess.Board,
         min_eval = math.inf
         for move in legal_moves:
             if(board.is_capture(move)):    
-                continue_search = True        
                 board.push(move)
                 eval = quiescence_search(board, alpha, beta, depth-1, True)
                 board.pop()
@@ -88,12 +85,13 @@ def quiescence_search(board: chess.Board,
         return min_eval
 
 
-def minimax(board: chess.Board, 
-            depth: int, 
-            #quiescense_depth:int
-            alpha: float, 
-            beta: float, 
-            maximizing_player: bool) -> float:
+def minimax(board: chess.Board,
+            depth: int,
+            alpha: float,
+            beta: float,
+            maximizing_player: bool,
+            quiescense_depth: int = 1,
+            null_move: bool = False) -> float:
     """
     Minimax algorithm with alpha-beta pruning
     
@@ -110,12 +108,12 @@ def minimax(board: chess.Board,
     if board.is_game_over():
         return evaluate_board(board.fen())
     if depth == 0:
-        quiescence_search(board, alpha, beta, 5, maximizing_player)
-        #thay 5 bang quiescense_depth(phu thuoc vao depth cua minimax)
+        quiescence_search(board, alpha, beta, quiescense_depth, maximizing_player)
+
     legal_moves = list(board.legal_moves)
 
     if maximizing_player:
-        max_eval = null_move_search(board, depth, alpha,beta)
+        max_eval = null_move_search(board, depth, alpha,beta) if null_move else -math.inf
         for move in legal_moves:
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, False)
@@ -138,7 +136,10 @@ def minimax(board: chess.Board,
         return min_eval
 
 
-def find_best_move(fen: str, depth: int) -> str:
+def find_best_move(fen: str,
+                   depth: int,
+                   quiescense_depth: int = 1,
+                   null_move: bool = False) -> str:
     """
     Find the best move using minimax algorithm
     
@@ -156,25 +157,27 @@ def find_best_move(fen: str, depth: int) -> str:
 
     for move in board.legal_moves:
         board.push(move)
-        board_value = minimax(board, depth - 1, alpha, beta, False)
+        board_value = minimax(board, depth - 1, alpha, beta, False, quiescense_depth, null_move)
         board.pop()
-        
+
         if board_value > best_value:
             best_value = board_value
             best_move = move
 
     return best_move.uci() if best_move else None
 
-"""
-Usage:
-$ python chess_engine.py "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" 3
 
-Output:
-g1f3
-"""
+# Usage:
+# $ python chess_engine.py "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" 3 5 True
+
+# Output:
+# g1f3
+
 if __name__ == "__main__":
-    fen = sys.argv[1]
-    depth = int(sys.argv[2])
+    FEN = sys.argv[1]
+    DEPTH = int(sys.argv[2])
+    QUIESCENCE_DEPTH = int(sys.argv[3])
+    NULL_MOVE = bool(sys.argv[4])
 
-    best_move = find_best_move(fen, depth)
-    print(best_move)
+    BEST_MOVE = find_best_move(FEN, DEPTH, QUIESCENCE_DEPTH, NULL_MOVE)
+    print(BEST_MOVE)

@@ -4,6 +4,7 @@ Chess engine using minimax algorithm with alpha-beta pruning
 
 import math
 import sys
+from typing import List
 import chess
 from evaluation.init_evaluation import evaluate_board
 
@@ -56,7 +57,7 @@ def quiescence_search(board: chess.Board,
     """sử dụng sau khi đạt được depth =0"""
     """dừng khi game kết thúc hoặc đạt đến depth giới hạn(tránh stack overflow)"""
 
-    if board.is_game_over():
+    if board.is_game_over() or depth == 0:
         return evaluate_board(board)
     legal_moves = list(board.legal_moves)
     if maximizing:
@@ -70,6 +71,8 @@ def quiescence_search(board: chess.Board,
                 alpha = max(alpha, eval)
                 if beta <= alpha:
                     break
+        if max_eval == -math.inf:
+            max_eval = evaluate_board(board)
         return max_eval
     else:
         min_eval = math.inf
@@ -81,9 +84,120 @@ def quiescence_search(board: chess.Board,
                 min_eval = min(min_eval, eval)
                 beta = min(beta, eval)
                 if beta <= alpha:
-                    break  # Cắt tỉa
+                    break
+        if min_eval == math.inf: 
+            min_eval = evaluate_board(board)       
         return min_eval
 
+def zzzzzz_quiescence_search(board: chess.Board,  
+                    alpha: float,
+                    beta: float,
+                    depth: int,
+                    maximizing: bool,
+                    captured: List[List[bool]] #chỗ này nên là truyền tham chiếu // boolen[9][9]
+                    ) -> float:
+    """sử dụng sau khi đạt được depth =0"""
+    """chỉ cho tự do ăn và chiếu depth lần, những quân ăn và chiếu sẽ bị đánh dấu, sau depth lần chỉ xét những nước ăn những quân đó """
+
+    if board.is_game_over():
+        return evaluate_board(board)
+    #if depth = 0 do eval
+    if depth==0:
+        sub_zzzzzz_quiescense(board, maximizing, captured)
+    legal_moves = list(board.legal_moves)
+    if maximizing:
+        max_eval = -math.inf
+        for move in legal_moves:
+            if(board.gives_check(move) or board.is_capture(move)):
+                temp = move.uci()
+                board.push(move)
+                old_1 = captured[temp[1]][ord(temp[0])]
+                old_2 = captured[temp[3]][ord(temp[2])]
+                captured[temp[3]][ord(temp[2])]=True
+                captured[temp[1]][ord(temp[0])]=False
+                eval = zzzzzz_quiescence_search(board, alpha, beta, depth-1 , False, captured)
+                board.pop()
+                captured[temp[1]][ord(temp[0])] = old_1
+                captured[temp[3]][ord(temp[2])] = old_2
+
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+        if max_eval == -math.inf:
+            max_eval = evaluate_board(board)
+        return max_eval
+    else:
+        min_eval = math.inf
+        for move in legal_moves:
+            if(board.gives_check(move) or board.is_capture(move)):
+                temp = move.uci() 
+                board.push(move)
+                old_1 = captured[temp[1]][ord(temp[0])]
+                old_2 = captured[temp[3]][ord(temp[2])]
+                captured[temp[3]][ord(temp[2])]=True
+                captured[temp[1]][ord(temp[0])]=False
+                eval = zzzzzz_quiescence_search(board, alpha, beta, depth-1, True, captured)
+                board.pop()
+                captured[temp[1]][ord(temp[0])] = old_1
+                captured[temp[3]][ord(temp[2])] = old_2
+
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
+        if min_eval == math.inf: 
+            min_eval = evaluate_board(board)       
+        return min_eval
+
+def sub_zzzzzz_quiescense(board: chess.Board,  
+                    maximizing: bool,
+                    captured: List[List[bool]] #chỗ này nên là truyền tham chiếu // boolen[9][9]
+                    ) -> float:
+    
+    if board.is_game_over():
+        return evaluate_board(board)
+    
+    legal_moves = list(board.legal_moves)
+    if maximizing:
+        max_eval = -math.inf
+        for move in legal_moves:
+            # neu captured true nghia la an duoc quan co frag
+            if(captured[temp[3]][ord(temp[2])]):
+                temp = move.uci()
+                board.push(move)
+                old_1 = captured[temp[1]][ord(temp[0])]
+                captured[temp[1]][ord(temp[0])]=False
+                eval = sub_zzzzzz_quiescense(board, False, captured)
+                board.pop()
+                captured[temp[1]][ord(temp[0])] = old_1
+
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+        if max_eval == -math.inf:
+            max_eval = evaluate_board(board)
+        return max_eval
+    else:
+        min_eval = math.inf
+        for move in legal_moves:
+            if(board.is_capture(move)):   
+                temp = move.uci()
+                board.push(move)
+                old_1 = captured[temp[1]][ord(temp[0])]
+                captured[temp[1]][ord(temp[0])]=False
+                eval = sub_zzzzzz_quiescense(board, True, captured)
+                board.pop()
+                captured[temp[1]][ord(temp[0])] = old_1
+
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
+        if min_eval == math.inf: 
+            min_eval = evaluate_board(board)       
+        return min_eval
 
 def minimax(board: chess.Board,
             depth: int,

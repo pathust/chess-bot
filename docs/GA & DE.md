@@ -1,4 +1,4 @@
-# Ứng dụng Cụ thể của Giải thuật Di truyền và Tiến hóa Vi phân trong Cờ vua
+# Genetic Algorithm và Differential Evolution
 
 ## 1. Mã hóa và Biểu diễn
 ### Nguyên lý:
@@ -53,7 +53,7 @@
 - Ít phù hợp với bài toán có không gian giải pháp rời rạc nếu không có bước biến đổi thích hợp.
 - Có thể gặp khó khăn trong việc tránh cực trị cục bộ nếu không thiết lập tốt.
 
-## 4. Kết hợp Alpha-Beta, Static Evaluation với GA và SHADE trong engine cờ:
+## 4. Kết hợp Alpha-Beta, Static Evaluation với GA và DE trong engine cờ:
 
 - **Alpha-Beta & Static Evaluation:** 
 
@@ -70,7 +70,7 @@
 - **Kết hợp & Ứng dụng:**
 
     - Phân chia trọng số theo giai đoạn trận đấu (mở đầu, giữa trận, cuối trận).
-    - Sử dụng GA để khám phá không gian giải pháp, sau đó SHADE tinh chỉnh tham số liên tục qua các ván đấu mô phỏng hoặc self-play.
+    - Sử dụng GA để khám phá không gian giải pháp, sau đó DE tinh chỉnh tham số liên tục qua các ván đấu mô phỏng hoặc self-play.
     - Kết quả là hàm đánh giá chính xác hơn, hỗ trợ Alpha-Beta loại bỏ các nhánh không khả thi nhanh chóng.
 
 ## 6. Kết luận

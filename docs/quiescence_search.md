@@ -18,9 +18,10 @@ https://en.wikipedia.org/wiki/Quiescence_search
 ---
 
 ## Advance Quiescence (Zzzzzz#Quiescence)  
-Khi một quân cờ thực hiện nước ăn quân, một cờ đánh dấu (capture flag) được đặt trên quân cờ đó. Trong thuật toán quiescence, tôi cho phép **QUIES_MAX** số nước ăn quân miễn phí (tức là bất kỳ quân nào cũng có thể ăn quân khác). Tuy nhiên, sau khi vượt qua giới hạn **QUIES_MAX**, chỉ những nước ăn quân vào các quân có cờ đánh dấu mới được phép tiếp tục. Cách này giúp thuật toán quiescence luôn kết thúc và nhiều chuỗi trao đổi như "tôi ăn hậu của bạn, bạn ăn hậu của tôi, v.v." được đánh giá chính xác.  
+Trong thuật toán Zzzzzz_quiescence, cho phép **QUIES_MAX** bước đầu được thực hiện ***như quiescence cơ bản*** (bất kỳ quân nào cũng có thể ăn quân khác và  chiếu tướng) nhưng những quân cờ đã di chuyển đó sẽ được đánh dấu (Trong code dùng 1 mảng 2 chiều để đánh dấu những vị trí các quân bị đánh dấu). Sau khi **zzzzzz_Quiescence** đạt đến depth = 0 sẽ gọi đến thuật toán **sub_zzzzzz_quiescence()** chỉ xét những nước ăn những quân đã được đánh dấu.   
+Cách này giúp thuật toán quiescence luôn kết thúc với nhiều chuỗi trao đổi như "đổi hậu, thí hậu chiếu tướng,..." được đánh giá chính xác.  
 
-Giá trị **QUIES_MAX** càng cao thì kết quả càng tốt, nhưng đồng thời cũng làm chậm chương trình, do đó có một sự đánh đổi giữa độ chính xác và tốc độ. Trong **ZZZZZZ**, thuật toán quiescence hầu như không mất nhiều thời gian: thuật toán thường kết thúc ngay sau lần gọi **eval()** đầu tiên (depth = 0) (đánh giá mà dù sao cũng phải thực hiện), và chỉ khoảng 10% các lần gọi **eval()** đến từ các nút bên trong sâu hơn. Tôi cũng đã thử nghiệm với nước đi null-move trong quiescence search, nhưng không đem lại hiệu quả đáng kể.  
+Giá trị **QUIES_MAX** càng cao thì kết quả càng tốt, nhưng đồng thời cũng làm chậm chương trình, do đó cần cân bằng giữa độ chính xác và tốc độ. Trong **ZZZZZZ**, thuật toán quiescence hầu như không mất nhiều thời gian: thuật toán thường kết thúc ngay sau lần gọi **sub_zzzzzz_quiescence()** đầu tiên (depth = 0) , và chỉ khoảng 10% các lần gọi **sub_zzzzzz_quiescence()** được thực hiện sâu hơn. Các thử nghiệm áp dụng null-move trong quiescence search không đem lại hiệu quả đáng kể.  
 
 ### Tài liệu tham khảo:  
 https://www.chessprogramming.org/Zzzzzz#Quiescence  

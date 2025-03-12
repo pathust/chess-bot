@@ -111,12 +111,15 @@ def zzzzzz_quiescence_search(board: chess.Board,
             if(board.gives_check(move) or board.is_capture(move)):
                 temp = move.uci()
                 board.push(move)
+                #lưu trữ trạng thái các quân cờ đã bị đánh dấu chưa trước khi di chuyển
                 old_1 = captured[temp[1]][ord(temp[0])]
                 old_2 = captured[temp[3]][ord(temp[2])]
                 captured[temp[3]][ord(temp[2])]=True
                 captured[temp[1]][ord(temp[0])]=False
                 eval = zzzzzz_quiescence_search(board, alpha, beta, depth-1 , False, captured)
+
                 board.pop()
+                #trả lại trạng thái sau khi di quay lui
                 captured[temp[1]][ord(temp[0])] = old_1
                 captured[temp[3]][ord(temp[2])] = old_2
 

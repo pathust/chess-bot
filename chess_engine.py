@@ -231,6 +231,7 @@ def minimax(board: chess.Board,
 
     if maximizing_player:
         max_eval = null_move_search(board, depth, alpha,beta) if null_move else -math.inf
+        null_move_Search=max_eval
         for move in legal_moves:
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, False)
@@ -239,6 +240,17 @@ def minimax(board: chess.Board,
             alpha = max(alpha, eval)
             if beta <= alpha:
                 break
+
+        if(null_move_search==max_eval):
+            max_eval=-math.inf
+            for move in legal_moves:
+                board.push(move)
+                eval = minimax(board, depth - 1, alpha, beta, False)
+                board.pop()
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
         return max_eval
     else:
         min_eval = math.inf

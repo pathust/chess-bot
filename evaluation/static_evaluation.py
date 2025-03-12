@@ -80,7 +80,7 @@ def evaluate_center_control(board):
     return score * WEIGHTS["center_control"]  
 
 # Hàm tổng hợp đánh giá bàn cờ
-def evaluation_function(fen):
+def evaluate_board(fen):
     
    # Tính tổng điểm đánh giá bàn cờ dựa trên 5 yếu tố chính.
     board = chess.Board(fen)
@@ -98,7 +98,7 @@ def evaluation_function(fen):
 if __name__ == "__main__":
     fen = "r1bq1rk1/pppp1ppp/2n2n2/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQ - 0 7"
     
-    score = evaluation_function(fen)
+    score = evaluate_board(fen)
     print(f"Điểm số của thế cờ: {score}")
 
 

@@ -6,7 +6,7 @@ import math
 import sys
 from typing import List
 import chess
-from evaluation.init_evaluation import evaluate_board
+from evaluation.static_evaluation import evaluate_board
 
 def possible_null_move(board: chess.Board ) -> bool:
     """Hàm kiểm tra xem có thể thực hiện nullMove không""" 

@@ -6,7 +6,7 @@ import math
 import sys
 from typing import List
 import chess
-from evaluation.init_evaluation import evaluate_board
+from evaluation.static_evaluation import evaluate_board
 
 def possible_null_move(board: chess.Board ) -> bool:
     """Hàm kiểm tra xem có thể thực hiện nullMove không""" 
@@ -33,18 +33,19 @@ def possible_null_move(board: chess.Board ) -> bool:
 def null_move_search(board: chess.Board,
                     depth: int,
                     alpha: float,
-                    beta: float) -> float:
+                    beta: float,
+                    killer_moves: list[set]) -> float:
     """hàm thực hiện null move"""
 
     #khi không thể nullmove thì trả về âm vô cùng
     if not possible_null_move(board):
         return  -math.inf
-    if depth <= 0:
+    if depth -3 < 0:
         return evaluate_board(board)
 
     board.push(chess.Move.null)
     #theo các báo cáo R=3 là giá trị tối ưu cho null movemove
-    eval = minimax(board, depth - 3, alpha, beta, False)
+    eval = minimax(board, depth - 3, alpha, beta,killer_moves ,False, 0, True, False)
     board.pop()
     alpha = max(alpha, eval)
     return eval
@@ -77,7 +78,7 @@ def quiescence_search(board: chess.Board,
     else:
         min_eval = math.inf
         for move in legal_moves:
-            if(board.is_capture(move)):    
+            if(board.gives_check(move) or board.is_capture(move)):    
                 board.push(move)
                 eval = quiescence_search(board, alpha, beta, depth-1, True)
                 board.pop()
@@ -202,13 +203,52 @@ def sub_zzzzzz_quiescense(board: chess.Board,
             min_eval = evaluate_board(board)       
         return min_eval
 
+def killer_move_search(
+            board: chess.Board,
+            depth: int,
+            alpha: float,
+            beta: float,
+            killer_moves: list[list],
+            maximizing_player: bool,
+            quiescense_depth: int = 1,
+            null_move: bool = False) -> float:
+    
+    if maximizing_player:
+        max_eval = -math.inf        
+        for move in killer_moves[depth]:
+            if not board.is_legal(move):
+                continue
+            board.push(move)
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves, False, quiescense_depth, null_move, True)# killer search on
+            board.pop()
+            max_eval = max(max_eval, eval)
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break
+        return max_eval
+    else:
+        min_eval = math.inf
+        for move in killer_moves[depth]:
+            if not board.is_legal(move):
+                continue
+            board.push(move)
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves, True, quiescense_depth, null_move, True)
+            board.pop()
+            min_eval = min(min_eval, eval)
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break
+        return min_eval
+
 def minimax(board: chess.Board,
             depth: int,
             alpha: float,
             beta: float,
+            killer_moves: list[set],
             maximizing_player: bool,
             quiescense_depth: int = 1,
-            null_move: bool = False) -> float:
+            use_null_move: bool = False,
+            use_killer_move: bool = False) -> float:
     """
     Minimax algorithm with alpha-beta pruning
     
@@ -225,50 +265,58 @@ def minimax(board: chess.Board,
     if board.is_game_over():
         return evaluate_board(board.fen())
     if depth == 0:
-        quiescence_search(board, alpha, beta, quiescense_depth, maximizing_player)
+        return quiescence_search(board, alpha, beta, quiescense_depth, maximizing_player)
 
     legal_moves = list(board.legal_moves)
 
     if maximizing_player:
-        max_eval = null_move_search(board, depth, alpha,beta) if null_move else -math.inf
-        null_move_Search=max_eval
+        #on nullmove branch killer search and quiescense turn off
+        max_eval = null_move_search(board, depth, alpha, beta, killer_moves) if use_null_move else -math.inf
+        if use_killer_move:
+            temp = killer_move_search(board, depth, alpha, beta, killer_moves, maximizing_player, quiescense_depth, use_null_move);    
+            if temp>max_eval:
+                max_eval=temp    
+
         for move in legal_moves:
+            if use_killer_move and move in killer_moves[depth]:
+                continue
             board.push(move)
-            eval = minimax(board, depth - 1, alpha, beta, False)
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves ,False, quiescense_depth, use_null_move,use_killer_move)
             board.pop()
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
+                if use_killer_move:
+                    killer_moves[depth].add(move)
                 break
-
-        if(null_move_search==max_eval):
-            max_eval=-math.inf
-            for move in legal_moves:
-                board.push(move)
-                eval = minimax(board, depth - 1, alpha, beta, False)
-                board.pop()
-                max_eval = max(max_eval, eval)
-                alpha = max(alpha, eval)
-                if beta <= alpha:
-                    break
+            killer_moves[depth-2].clear()
         return max_eval
     else:
         min_eval = math.inf
+        if use_killer_move:
+            temp = killer_move_search(board, depth, alpha, beta, killer_moves, maximizing_player, quiescense_depth, use_null_move);    
+            if temp<min_eval:
+                min_eval=temp 
+
         for move in legal_moves:
+            if use_killer_move and move in killer_moves[depth]:
+                continue
             board.push(move)
-            eval = minimax(board, depth - 1, alpha, beta, True)
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves, True, quiescense_depth, use_null_move, use_killer_move)
             board.pop()
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
+                if use_killer_move:
+                    killer_moves[depth].add(move)
                 break
         return min_eval
-
 
 def find_best_move(fen: str,
                    depth: int,
                    quiescense_depth: int = 1,
-                   null_move: bool = False) -> str:
+                   null_move: bool = False,
+                   use_killer_move: bool = False) -> str:
     """
     Find the best move using minimax algorithm
     
@@ -284,9 +332,14 @@ def find_best_move(fen: str,
     best_value = -math.inf
     alpha, beta = -math.inf, math.inf
 
+    killer_moves = [set() for _ in range(depth)]
     for move in board.legal_moves:
+        for sub_list in killer_moves:
+            sub_list.clear()
+
         board.push(move)
-        board_value = minimax(board, depth - 1, alpha, beta, False, quiescense_depth, null_move)
+        board_value = minimax(board, depth - 1, alpha, beta, killer_moves, False, quiescense_depth, null_move,use_killer_move)
+        # các loại tham số có dùng quiescense, null_move các kiểu nên chuyển thành global var
         board.pop()
 
         if board_value > best_value:

@@ -60,32 +60,32 @@ def quiescence_search(board: chess.Board,
 
     if board.is_game_over() or depth == 0:
         return evaluate_board(board)
-    legal_moves = list(board.legal_moves)
+    moves_significant = [move for move in board.legal_moves if board.gives_check(move) or board.is_capture(move)]
     if maximizing:
         max_eval = -math.inf
-        for move in legal_moves:
-            if(board.gives_check(move) or board.is_capture(move)):
-                board.push(move)
-                eval = quiescence_search(board, alpha, beta, depth-1 , False)
-                board.pop()
-                max_eval = max(max_eval, eval)
-                alpha = max(alpha, eval)
-                if beta <= alpha:
-                    break
+        for move in moves_significant:
+            board.push(move)
+            eval = quiescence_search(board, alpha, beta, depth-1 , False)
+            board.pop()
+            max_eval = max(max_eval, eval)
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break
+            
         if max_eval == -math.inf:
             max_eval = evaluate_board(board)
         return max_eval
     else:
         min_eval = math.inf
-        for move in legal_moves:
-            if(board.gives_check(move) or board.is_capture(move)):    
-                board.push(move)
-                eval = quiescence_search(board, alpha, beta, depth-1, True)
-                board.pop()
-                min_eval = min(min_eval, eval)
-                beta = min(beta, eval)
-                if beta <= alpha:
-                    break
+        for move in moves_significant:
+            board.push(move)
+            eval = quiescence_search(board, alpha, beta, depth-1, True)
+            board.pop()
+            min_eval = min(min_eval, eval)
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break
+
         if min_eval == math.inf: 
             min_eval = evaluate_board(board)       
         return min_eval
@@ -278,7 +278,7 @@ def minimax(board: chess.Board,
                 max_eval=temp    
 
         for move in legal_moves:
-            if use_killer_move and move in killer_moves[depth]:
+            if use_killer_move and (move in killer_moves[depth] ):
                 continue
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, killer_moves ,False, quiescense_depth, use_null_move,use_killer_move)

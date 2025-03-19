@@ -43,11 +43,10 @@ def null_move_search(board: chess.Board,
     if depth -3 < 0:
         return evaluate_board(board.fen())
 
-    board.push(chess.Move.null)
+    board.push(chess.Move.null())
     #theo các báo cáo R=3 là giá trị tối ưu cho null movemove
     eval = minimax(board, depth - 3, alpha, beta,killer_moves ,False, 0, True, False)
     board.pop()
-    alpha = max(alpha, eval)
     return eval
 
 def quiescence_search(board: chess.Board,  

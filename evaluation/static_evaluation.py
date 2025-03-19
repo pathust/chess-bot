@@ -328,18 +328,24 @@ def evaluate_tempo(board: chess.Board, tempo_weight) -> float:
 # Hàm tổng hợp đánh giá bàn cờ
 def evaluate_board(fen: str,
                    chromosomes = [
-                                1.0, 0.8, -1.2, 0.7, 1.15, 1.05, 0.85, -0.95, # trọng số tối ưu từng hàm 
-                                100, 300, 320, 500, 900, 10000, # giá trị từng quân cờ trong bàn cờ - cố định
-                                10, 10, # pawn_structure
-                                20, # king_safety
-                                10, #centrer_control
-                                10,10, # piece-square table
-                                15, # eva piecee
-                                7 # tempo
+                                0.54, -2.39, -5.84, 0.03, 0.9, 0.13, -0.21, -11.37, # trọng số tối ưu từng hàm 
+                                93, 286, 351, 520, 913, 11999, # giá trị từng quân cờ trong bàn cờ - cố định
+                                6, -3, # pawn_structure
+                                5, # king_safety
+                                2, #centrer_control
+                                5,1, # piece-square table
+                                23, # eva piecee
+                                24 # tempo
                             ]
 ) -> float:
     # Tính tổng điểm đánh giá bàn cờ dựa trên 5 yếu tố chính.
     board = chess.Board(fen)
+    
+    if board.is_checkmate():
+        # If the current side to move is white (1) or black (0), return the score
+        return 1000 if board.turn == chess.WHITE else -1000
+    elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_variant_draw():
+        return 0
 
     # Trong so cua tung yeu to
     weights = chromosomes[:8]

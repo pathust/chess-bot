@@ -214,7 +214,7 @@ def killer_move_search(
     
     if maximizing_player:
         max_eval = -math.inf        
-        for move in killer_moves[depth]:
+        for move in killer_moves[depth].copy():
             if not board.is_legal(move):
                 continue
             board.push(move)
@@ -227,7 +227,7 @@ def killer_move_search(
         return max_eval
     else:
         min_eval = math.inf
-        for move in killer_moves[depth]:
+        for move in killer_moves[depth].copy():
             if not board.is_legal(move):
                 continue
             board.push(move)
@@ -287,8 +287,11 @@ def minimax(board: chess.Board,
             if beta <= alpha:
                 if use_killer_move:
                     killer_moves[depth].add(move)
+                    if depth>2:
+                        killer_moves[depth-2].add(move)                    
                 break
-            killer_moves[depth-2].clear()
+        if(depth>3):    
+            killer_moves[depth-4].clear()
         return max_eval
     else:
         min_eval = math.inf
@@ -298,7 +301,7 @@ def minimax(board: chess.Board,
                 min_eval=temp 
 
         for move in legal_moves:
-            if use_killer_move and move in killer_moves[depth]:
+            if use_killer_move and (move in killer_moves[depth] ):
                 continue
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, killer_moves, True, quiescense_depth, use_null_move, use_killer_move)
@@ -308,7 +311,11 @@ def minimax(board: chess.Board,
             if beta <= alpha:
                 if use_killer_move:
                     killer_moves[depth].add(move)
+                    if depth>2:
+                        killer_moves[depth-2].add(move)                    
                 break
+        if(depth>3):    
+            killer_moves[depth-4].clear()
         return min_eval
 
 def find_best_move(fen: str,
@@ -337,10 +344,10 @@ def find_best_move(fen: str,
             sub_list.clear()
 
         board.push(move)
-        board_value = minimax(board, depth - 1, alpha, beta, killer_moves, False, quiescense_depth, null_move,use_killer_move)
+        board_value = minimax(board, depth - 1, best_value, beta, killer_moves, False, quiescense_depth, null_move,use_killer_move)
         # các loại tham số có dùng quiescense, null_move các kiểu nên chuyển thành global var
         board.pop()
-
+        
         if board_value > best_value:
             best_value = board_value
             best_move = move

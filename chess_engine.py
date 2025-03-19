@@ -41,7 +41,7 @@ def null_move_search(board: chess.Board,
     if not possible_null_move(board):
         return  -math.inf
     if depth -3 < 0:
-        return evaluate_board(board)
+        return evaluate_board(board.fen())
 
     board.push(chess.Move.null)
     #theo các báo cáo R=3 là giá trị tối ưu cho null movemove
@@ -59,7 +59,7 @@ def quiescence_search(board: chess.Board,
     """dừng khi game kết thúc hoặc đạt đến depth giới hạn(tránh stack overflow)"""
 
     if board.is_game_over() or depth == 0:
-        return evaluate_board(board)
+        return evaluate_board(board.fen())
     moves_significant = [move for move in board.legal_moves if board.gives_check(move) or board.is_capture(move)]
     if maximizing:
         max_eval = -math.inf
@@ -73,7 +73,7 @@ def quiescence_search(board: chess.Board,
                 break
             
         if max_eval == -math.inf:
-            max_eval = evaluate_board(board)
+            max_eval = evaluate_board(board.fen())
         return max_eval
     else:
         min_eval = math.inf
@@ -87,7 +87,7 @@ def quiescence_search(board: chess.Board,
                 break
 
         if min_eval == math.inf: 
-            min_eval = evaluate_board(board)       
+            min_eval = evaluate_board(board.fen())       
         return min_eval
 
 def zzzzzz_quiescence_search(board: chess.Board,  
@@ -101,7 +101,7 @@ def zzzzzz_quiescence_search(board: chess.Board,
     """chỉ cho tự do ăn và chiếu depth lần, những quân ăn và chiếu sẽ bị đánh dấu, sau depth lần chỉ xét những nước ăn những quân đó """
 
     if board.is_game_over():
-        return evaluate_board(board)
+        return evaluate_board(board.fen())
     #if depth = 0 do eval
     if depth==0:
         sub_zzzzzz_quiescense(board, maximizing, captured)
@@ -129,7 +129,7 @@ def zzzzzz_quiescence_search(board: chess.Board,
                 if beta <= alpha:
                     break
         if max_eval == -math.inf:
-            max_eval = evaluate_board(board)
+            max_eval = evaluate_board(board.fen())
         return max_eval
     else:
         min_eval = math.inf
@@ -151,7 +151,7 @@ def zzzzzz_quiescence_search(board: chess.Board,
                 if beta <= alpha:
                     break
         if min_eval == math.inf: 
-            min_eval = evaluate_board(board)       
+            min_eval = evaluate_board(board.fen())       
         return min_eval
 
 def sub_zzzzzz_quiescense(board: chess.Board,  
@@ -160,7 +160,7 @@ def sub_zzzzzz_quiescense(board: chess.Board,
                     ) -> float:
     
     if board.is_game_over():
-        return evaluate_board(board)
+        return evaluate_board(board.fen())
     
     legal_moves = list(board.legal_moves)
     if maximizing:
@@ -181,7 +181,7 @@ def sub_zzzzzz_quiescense(board: chess.Board,
                 if beta <= alpha:
                     break
         if max_eval == -math.inf:
-            max_eval = evaluate_board(board)
+            max_eval = evaluate_board(board.fen())
         return max_eval
     else:
         min_eval = math.inf
@@ -200,7 +200,7 @@ def sub_zzzzzz_quiescense(board: chess.Board,
                 if beta <= alpha:
                     break
         if min_eval == math.inf: 
-            min_eval = evaluate_board(board)       
+            min_eval = evaluate_board(board.fen())       
         return min_eval
 
 def killer_move_search(

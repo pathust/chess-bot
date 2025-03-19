@@ -1,9 +1,40 @@
 import sys
 import chess
 from chess_engine import find_best_move  # Import the chess engine's best move function
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QGridLayout, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QGridLayout, QWidget, QVBoxLayout, QComboBox, QDialog
 from PyQt5.QtCore import Qt
 
+class PawnPromotionDialog(QDialog):
+    """Dialog for selecting the promotion piece."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Pawn Promotion")
+        self.setModal(True)
+
+        layout = QVBoxLayout()
+
+        self.label = QLabel("Choose a piece to promote to:")
+        layout.addWidget(self.label)
+
+        self.promotion_choice = QComboBox()
+        self.promotion_choice.addItems(["Queen", "Rook", "Bishop", "Knight"])
+        layout.addWidget(self.promotion_choice)
+
+        self.ok_button = QPushButton("OK")
+        self.ok_button.clicked.connect(self.accept)
+        layout.addWidget(self.ok_button)
+
+        self.setLayout(layout)
+
+    def get_choice(self):
+        """Return the selected piece in UCI format (q, r, b, n)."""
+        piece_map = {
+            "Queen": "q",
+            "Rook": "r",
+            "Bishop": "b",
+            "Knight": "n"
+        }
+        return piece_map[self.promotion_choice.currentText()]
 
 class ChessBoard(QMainWindow):
     def __init__(self):
@@ -76,30 +107,27 @@ class ChessBoard(QMainWindow):
                 self.update_board()
                 return
 
-            # Create move object
-            move = chess.Move.from_uci(f'{self.selected_square}{current_square}')
+            # Check if the move is a pawn promotion
+            from_square = chess.parse_square(self.selected_square)
+            to_square = chess.parse_square(current_square)
+            piece = self.board.piece_at(from_square)
 
-            # Check if the move is castling
-            if move in self.board.legal_moves:
-                if self.board.is_castling(move):
-                    print("Good job castling!")
-                    self.board.push(move)
-                    self.update_board()
-                    self.selected_square = None
-                    self.turn = 'ai'  # Switch turn to AI after human move
-                    self.ai_move()  # Let AI make its move
-                    return
+            is_promotion = (piece and piece.piece_type == chess.PAWN and
+                            (chess.square_rank(to_square) == 0 or chess.square_rank(to_square) == 7))
 
-            # Check for pawn promotion (when pawn reaches the last rank)
-            piece = self.board.piece_at(square)
-            if piece and piece.piece_type == chess.PAWN:
-                if (self.board.turn == chess.WHITE and i == 0) or (self.board.turn == chess.BLACK and i == 7):
-                    # Ask player which piece to promote the pawn to
-                    promotion_piece = input("Which piece you want to promote the pawn to? [q,r,b,n]: ")
-                    move = chess.Move.from_uci(f'{self.selected_square}{current_square}{promotion_piece}')
-            
-            print(move)
-            # If the move is valid (including castling and pawn promotion)
+            if is_promotion:
+                dialog = PawnPromotionDialog(self)
+                if dialog.exec_() == QDialog.Accepted:
+                    promotion_piece = dialog.get_choice()
+                    move = chess.Move(from_square, to_square, promotion=chess.Piece.from_symbol(promotion_piece.upper()).piece_type)
+                else:
+                    return  # If the player cancels, do nothing
+            else:
+                move = chess.Move(from_square, to_square)
+
+            print("Move attempted:", move)
+
+            # Check if the move is valid
             if move in self.board.legal_moves:
                 self.board.push(move)
                 self.update_board()
@@ -111,6 +139,7 @@ class ChessBoard(QMainWindow):
                 print('Invalid move')
                 self.selected_square = None  # Reset selected square after invalid move
                 self.update_board()
+
 
     def deselect_piece(self):
         """Reset the selected piece."""

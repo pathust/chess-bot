@@ -49,11 +49,7 @@ def evaluate_king_safety(board: chess.Board, bonus: float) -> float:
 
     return score
 
-
-
 # Đánh giá cấu trúc tốt (Pawn Structure)
-import chess
-
 def evaluate_pawn_structure(board: chess.Board, doubled_penalty: float, isolated_penalty: float) -> float:
     """
     Đánh giá cấu trúc tốt dựa trên số lượng tốt chồng và tốt cô lập.
@@ -96,15 +92,71 @@ def evaluate_pawn_structure(board: chess.Board, doubled_penalty: float, isolated
 
     return score
 
+# Bảng thưởng Mobility từ Stockfish 1.9 cho từng loại quân
+MOBILITY_BONUS = {
+    chess.KNIGHT:  [(-38, -33), (-25, -23), (-12, -13), (0, -3), (12, 7), (25, 17), (31, 22), (38, 27), (38, 27)],  # Mã
+    chess.BISHOP:  [(-25, -30), (-11, -16), (3, -2), (17, 12), (31, 26), (45, 40), (57, 52), (65, 60), (71, 65), 
+                    (74, 69), (76, 71), (78, 73), (79, 74), (80, 75), (81, 76), (81, 76)],  # Tượng
+    chess.ROOK:    [(-20, -36), (-14, -19), (-8, -3), (-2, 13), (4, 29), (10, 46), (14, 62), (19, 79), (23, 95), 
+                    (26, 106), (27, 111), (28, 114), (29, 116), (30, 117), (31, 118), (32, 118)],  # Xe
+    chess.QUEEN:   [(-10, -18), (-8, -13), (-6, -7), (-3, -2), (-1, 3), (1, 8), (3, 13), (5, 19), (8, 23), 
+                    (10, 27), (12, 32), (15, 34), (16, 35), (17, 35), (18, 35), (20, 35)],  # Hậu
+}
 
+# Hàm tính trọng số λ
+def phase_weight(board: chess.Board) -> float:
+    """
+    Tính trọng số λ để xác định giai đoạn của trò chơi (trung cuộc vs tàn cuộc).
+    λ = 1 (trung cuộc), λ = 0 (tàn cuộc), giảm dần khi số quân trên bàn giảm.
+    """
+    total_phase = 24  # Giá trị phase tối đa khi ván cờ mới bắt đầu
+    phase = total_phase
+
+    # Giá trị phase giảm dựa trên số lượng quân trên bàn
+    phase -= len(board.pieces(chess.QUEEN, chess.WHITE)) * 4
+    phase -= len(board.pieces(chess.QUEEN, chess.BLACK)) * 4
+    phase -= len(board.pieces(chess.ROOK, chess.WHITE)) * 2
+    phase -= len(board.pieces(chess.ROOK, chess.BLACK)) * 2
+    phase -= len(board.pieces(chess.BISHOP, chess.WHITE)) * 1
+    phase -= len(board.pieces(chess.BISHOP, chess.BLACK)) * 1
+    phase -= len(board.pieces(chess.KNIGHT, chess.WHITE)) * 1
+    phase -= len(board.pieces(chess.KNIGHT, chess.BLACK)) * 1
+
+    # Đảm bảo λ nằm trong khoảng [0,1]
+    return max(0, min(1, phase / total_phase))
 
 # Đánh giá tính cơ động (Mobility)
-def evaluate_mobility(board, bonus: float) -> float:
-# - Số nước đi hợp lệ càng nhiều, điểm càng cao.
-# - Mỗi nước đi hợp lệ cộng 5 điểm.
+def evaluate_mobility(board: chess.Board) -> float:
+    """
+    Đánh giá mobility dựa trên số bước đi hợp lệ của từng quân cờ.
+    Tính điểm mobility dựa trên bảng thưởng điểm của Stockfish, có cân nhắc hệ số λ.
+    """
+    total_mg = 0  # Điểm mobility trung cuộc
+    total_eg = 0  # Điểm mobility tàn cuộc
 
-    return len(list(board.legal_moves)) * bonus
+    # Duyệt qua tất cả quân cờ trên bàn
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece and piece.piece_type in MOBILITY_BONUS:
+            # Đếm số nước đi hợp lệ của quân cờ
+            mobility_count = sum(1 for move in board.legal_moves if move.from_square == square)
+            mobility_bonus = MOBILITY_BONUS[piece.piece_type]
 
+            # Giới hạn số bước đi trong phạm vi bảng MobilityBonus
+            mobility_index = min(mobility_count, len(mobility_bonus) - 1)
+            mg_bonus, eg_bonus = mobility_bonus[mobility_index]  # Lấy điểm mobility MG & EG
+
+           # Nếu là quân trắng -> cộng, quân đen -> trừ
+            sign = 1 if piece.color == chess.WHITE else -1
+            total_mg += sign * mg_bonus
+            total_eg += sign * eg_bonus
+
+    # Xác định trọng số λ (để cân bằng MG và EG)
+    lambda_phase = phase_weight(board)
+    
+    # Tính điểm tổng kết mobility dựa trên pha chơi
+    return lambda_phase * total_mg + (1 - lambda_phase) * total_eg
+    
 # Đánh giá kiểm soát trung tâm (Center Control)
 CENTER_SQUARES = [chess.D4, chess.D5, chess.E4, chess.E5]
 def evaluate_center_control(board: chess.Board, bonus: float) -> float:
@@ -189,7 +241,7 @@ def evaluate_piece_square(board: chess.Board, piece_square_weight) -> float:
 
     return score
 
-
+# Hàm đánh giá các vị trí chiến thuật đặc biệt (Evaluation Pieces)
 def evaluate_tactical_positions(board: chess.Board, tactical_weight) -> float:
     """
     Đánh giá vị trí chiến thuật của các quân cờ trên bàn cờ.
@@ -225,7 +277,6 @@ def evaluate_tactical_positions(board: chess.Board, tactical_weight) -> float:
     return score
 
 # HÀM HỖ TRỢ
-
 def is_open_file(board, square) -> bool:
     """Kiểm tra xem Xe có đứng trên cột mở không (không có tốt trên cột này)."""
     file = square % 8  # Lấy cột của quân cờ
@@ -269,7 +320,6 @@ def is_early_queen_move(move_count) -> bool:
     """Phạt nếu Hậu di chuyển quá sớm trong 10 nước đi đầu tiên."""
     return move_count < 10  # Nếu tổng số nước đi <10, phạt nếu Hậu đã rời vị trí ban đầu
 
-
 # Hàm đánh giá Tempo**
 def evaluate_tempo(board: chess.Board, tempo_weight) -> float:
     move_count = len(board.move_stack)
@@ -282,7 +332,6 @@ def evaluate_board(fen: str,
                                 100, 300, 320, 500, 900, 10000, # giá trị từng quân cờ trong bàn cờ - cố định
                                 10, 10, # pawn_structure
                                 20, # king_safety
-                                5,# mobility
                                 10, #centrer_control
                                 10,10, # piece-square table
                                 15, # eva piecee
@@ -305,19 +354,18 @@ def evaluate_board(fen: str,
     bonus = chromosomes[16]
     king_safety = evaluate_king_safety(board, bonus)
 
-    bonus = chromosomes[17]
-    mobility = evaluate_mobility(board, bonus)
+    mobility = evaluate_mobility(board)
 
-    bonus = chromosomes[18]
+    bonus = chromosomes[17]
     center_control = evaluate_center_control(board, bonus)
 
-    bonus = chromosomes[18:20]
+    bonus = chromosomes[17:19]
     Piece_Square_Table = evaluate_piece_square(board, bonus)
 
-    bonus = chromosomes[20]
+    bonus = chromosomes[19]
     tactical_score = evaluate_tactical_positions(board, bonus)
 
-    bonus = chromosomes[21]
+    bonus = chromosomes[20]
     tempo_score = evaluate_tempo(board, bonus)
 
 

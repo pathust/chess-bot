@@ -13,7 +13,7 @@
     + giá trị 0: vị thế cân bằng 
 - công thức tổng quát:
  Eval(position) = t1 * evaluate_material + t2 *evaluate_king_safety + t3 * W_pawn_structure + t4 *  + W_mobility + t5 * W_center_control + t6 * W_piece_square + t7 * W_evaluation_pieces + t8 * W_tempo  
-  ti (i = 1,8): hệ số tối ưu của từng hàm/yếu tố -> xác định 
+  ti (i = 1,8): hệ số tối ưu của từng hàm/yếu tố -> xác định mức độ ảnh hưởng của yếu tố đó tới trạng thái bàn cờ.
 
  ### evaluate_material - đánh giá giá trị quân cờ 
  - Dựa trên nguyên tắc rằng mỗi quân cờ có một giá trị vật chất cụ thể thể hiện sức mạnh của nó tương đối trên toàn bàn cờ.
@@ -22,6 +22,7 @@
  - sử dụng 1 hàm ánh xạ từng loại quân cờ đến giá trị số của nó
  - duyệt qua toàn bộ bàn cờ -> xác định quân cờ
  - cộng giá trị quân cờ nếu là quân trắng và ngược lại
+ 
 
  ### evaluate_king_safety
  - Mục tiêu cuối cùng trong cờ vua là **tấn công và chiếu hết vua đối phương**. Vì vậy, an toàn của vua là yếu tố quan trọng hàng đầu, đặc biệt trong giai đoạn trung và tàn cuộc. Vua được bảo vệ tốt sẽ ít bị tấn công hơn.
@@ -75,6 +76,26 @@
 - đếm số nước đi đã thực hiện(board.move_stack)
 - áp dụng 1 hệ số tempo_weight
 - thêm điểm âm khi số nước tăng để khuyến khích giải quyết nhanh.
+
+## Vấn đề
+ 1. Bộ hệ số tối ưu ti chưa được tối ưu
+ 2. Chưa có phương pháo kiểm tra nước đi mạnh yếu <-> Hàm đánh giá chỉ đánh giá trạng thái bàn cờ mà không kiểm tra nước đi nào là mạnh hay yếu. Mặt khác, một thế cờ có điểm số cao nhưng không có nước đi mạnh thì vẫn có thể bị thua đồng thời thiếu đi cơ chế dự báo nếu đối thủ có nước đi phản công mạnh.
+ 3. Các hệ số đánh giá giá trị hiện tại trong hầu hết các hàm thành phần đang khá chung mà chưa đủ cụ thể và chính xác trong từng giai đoạn của bàn cờ(opening, midllegame,endgame). 
+ 4. Một số hàm như evaluate_mobility() và evaluate_piece_square() có thể tính toán lặp lại nhiều lần một số trường hợp. Từ đó làm giảm tốc độ tìm kiếm của engine, đồng thời lãng phí tài nguyên tính toán.
+ 5. hàm evaluation đang chỉ đánh giá vị trí hiện tại mà không dự đoán được các đòn chiến thuật như: gim, chồng đè, tấn công đôi, chiếu hết.Ví dụ: minimax có thể chọn một bước đi có giá trị tối ưu nhất hiện tại nhưng mà nước đi này có thể dẫn đến chiếu hết trong ngay mấy bước sau.
+ 6. hàm evaluation có thể tính điểm số cao nhưng lại không thể nhận ra thế cờ này dẫn đến kết quả hoà. Ví dụ: một số tình huống hoà khá phổ biến như
+     - 50-move rule
+     - threefold repetition
+     - vua bị khoá không có nước đi hợp lệ
+     -> nếu AI đánh giá thấy vẫn có lợi thế -> chọn nước đi sai lầm.
+ 
+## Giải pháp 
+ 1. Huấn luyện bộ hệ số tối ưu và các giá trị đánh giá trong hàm thành phần bằng thuật toán di truyền, đồng thời căn chỉnh hệ số trong các giai đoạn của bàn cờ(opening, middlegame, endgame) dựa vào kết quả các ván đấu thực nghiệm.
+ 2. Lưu trữ các trạng thái bàn cờ đã tính toán vào bảng transposition table để tránh tính toán lặp lại.
+ 3. Có thể xây dựng thêm modul nhận diện chiến thuật(ví dụ nếu một nước đi dẫn đến bị ghim -> trừ điểm, dẫn đến chiếu hết-> trả về giá trị cao nhất,..), thêm kiểm tra các quy tắc hoà trước đi đánh giá nước đi 
+
+ 
+
 
 ## tài liệu tham khảo
 https://arxiv.org/pdf/2007.02130

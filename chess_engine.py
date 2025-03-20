@@ -11,6 +11,17 @@ import chess.polyglot
 from evaluation.static_evaluation import evaluate_board
 
 
+evalue_time = 0
+pruning_time =0
+
+def evalue_inc():
+    global evalue_time
+    evalue_time =evalue_time+1
+
+def prun_inc():
+    global pruning_time
+    pruning_time =pruning_time+1
+
 def possible_null_move(board: chess.Board ) -> bool:
     """Hàm kiểm tra xem có thể thực hiện nullMove không""" 
 
@@ -75,6 +86,7 @@ def quiescence_search(board: chess.Board,
     """dừng khi game kết thúc hoặc đạt đến depth giới hạn(tránh stack overflow)"""
 
     if board.is_game_over() or depth == 0:
+        evalue_inc()
         return evaluate_board(board.fen())
     moves_significant = [move for move in board.legal_moves if board.gives_check(move) or board.is_capture(move)]
     if maximizing:
@@ -86,6 +98,7 @@ def quiescence_search(board: chess.Board,
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
+                prun_inc()
                 break
             
         if max_eval == -math.inf:
@@ -100,6 +113,7 @@ def quiescence_search(board: chess.Board,
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
+                prun_inc()
                 break
 
         if min_eval == math.inf: 
@@ -242,6 +256,7 @@ def killer_move_search(
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
+                prun_inc()
                 break
         return max_eval
     else:
@@ -255,6 +270,7 @@ def killer_move_search(
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
+                prun_inc()
                 break
         return min_eval
     
@@ -275,6 +291,7 @@ def pvs(board: chess.Board,
         return entry['value']
 
     if board.is_game_over() or depth == 0:
+        evalue_inc()
         return evaluate_board(board.fen())
 
     
@@ -304,6 +321,7 @@ def pvs(board: chess.Board,
                 best=move
             alpha = max(alpha, eval)
             if beta <= alpha:
+                prun_inc()
                 best=move                   
                 break
         
@@ -337,6 +355,7 @@ def pvs(board: chess.Board,
                 best=move
             beta = min(beta, eval)
             if beta <= alpha:
+                prun_inc()
                 best=move                   
                 break
 
@@ -380,6 +399,7 @@ def minimax(board: chess.Board,
         return entry['value']
 
     if board.is_game_over():
+        evalue_inc()
         return evaluate_board(board.fen())
     if depth == 0:
         return quiescence_search(board, alpha, beta, quiescense_depth, maximizing_player)
@@ -429,6 +449,7 @@ def minimax(board: chess.Board,
                 best=move
             alpha = max(alpha, eval)
             if beta <= alpha:
+                prun_inc()
                 best=move                   
                 break
         
@@ -478,6 +499,7 @@ def minimax(board: chess.Board,
                 best=move
             beta = min(beta, eval)
             if beta <= alpha:
+                prun_inc()
                 best=move                   
                 break
 
@@ -487,7 +509,6 @@ def minimax(board: chess.Board,
                 killer_moves[depth-2].add(best) 
         if(depth>3 and use_killer_move):    
             killer_moves[depth-4].clear()
-
 
         tt.store(zobrist_key,min_eval,depth,best)
         return min_eval
@@ -526,6 +547,12 @@ def find_best_move(fen: str,
         if board_value > best_value:
             best_value = board_value
             best_move = move
+    global evalue_time
+    global pruning_time
+    print("evaluate time:")
+    print(evalue_time)
+    print("prun time:")
+    print(pruning_time)
 
     return best_move.uci() if best_move else None
 

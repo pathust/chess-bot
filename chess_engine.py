@@ -33,6 +33,17 @@ def possible_null_move(board: chess.Board ) -> bool:
                 other = True
     return other and (number_pieces>4)
 
+def move_priority(move: chess.Move,
+                  board: chess.Board):
+    target_piece = board.piece_at(move.to_square)
+    if target_piece is not None:  # Nếu nước đi ăn quân
+        return   target_piece.piece_type + 1
+    elif board.gives_check(move):
+        return 5
+    elif board.piece_at(move.from_square).piece_type == chess.PAWN:
+        return 1  
+    return 2  
+
 def null_move_search(board: chess.Board,
                     depth: int,
                     alpha: float,
@@ -211,7 +222,7 @@ def killer_move_search(
             depth: int,
             alpha: float,
             beta: float,
-            killer_moves: list[list],
+            killer_moves: list[set],
             tt: TranspositionTable,
             maximizing_player: bool,
             quiescense_depth: int = 1,
@@ -243,6 +254,8 @@ def killer_move_search(
             if beta <= alpha:
                 break
         return min_eval
+    
+    
 
 def minimax(board: chess.Board,
             depth: int,
@@ -280,11 +293,15 @@ def minimax(board: chess.Board,
         return quiescence_search(board, alpha, beta, quiescense_depth, maximizing_player)
     
     legal_moves = list(board.legal_moves)
-
-    best = chess.Move.null
+    legal_moves = sorted(list(board.legal_moves), key=lambda move: move_priority(move, board), reverse=True)
+    best = None
     if maximizing_player:
         #on nullmove branch killer search and quiescense turn off
-        max_eval = null_move_search(board, depth, alpha, beta, killer_moves,tt) if use_null_move else -math.inf
+        if use_null_move and possible_null_move(board):
+            null_move_score = null_move_search(board, depth, alpha, beta, killer_moves,tt)  
+            max_eval=null_move_score
+        else:
+            max_eval=-math.inf
         if use_killer_move:
             temp = killer_move_search(board, depth, alpha, beta, killer_moves, tt, maximizing_player, quiescense_depth, use_null_move);    
             if temp>max_eval:
@@ -301,14 +318,21 @@ def minimax(board: chess.Board,
                 best=move
             alpha = max(alpha, eval)
             if beta <= alpha:
-                if use_killer_move:
-                    killer_moves[depth].add(move)
-                    if depth>2:
-                        killer_moves[depth-2].add(move)                    
+                best=move                   
                 break
-        if(depth>3):    
+        
+        if use_null_move and possible_null_move(board):
+            if null_move_score == max_eval:
+                return -math.inf
+        
+        if use_killer_move:
+            killer_moves[depth].add(best)
+            if depth>2:
+                killer_moves[depth-2].add(best) 
+        if(depth>3 and use_killer_move):    
             killer_moves[depth-4].clear()
-        tt.store(zobrist_key,max_eval,depth,move)
+
+        tt.store(zobrist_key,max_eval,depth,best)
         return max_eval
     else:
         min_eval = math.inf
@@ -329,14 +353,18 @@ def minimax(board: chess.Board,
                 best=move
             beta = min(beta, eval)
             if beta <= alpha:
-                if use_killer_move:
-                    killer_moves[depth].add(move)
-                    if depth>2:
-                        killer_moves[depth-2].add(move)                    
+                best=move                   
                 break
-        if(depth>3):    
+
+        if use_killer_move:
+            killer_moves[depth].add(best)
+            if depth>2:
+                killer_moves[depth-2].add(best) 
+        if(depth>3 and use_killer_move):    
             killer_moves[depth-4].clear()
-        tt.store(zobrist_key,min_eval,depth,move)
+
+
+        tt.store(zobrist_key,min_eval,depth,best)
         return min_eval
 
 def find_best_move(fen: str,

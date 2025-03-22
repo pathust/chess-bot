@@ -1,15 +1,35 @@
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QGridLayout, QLabel, QVBoxLayout, 
     QHBoxLayout, QComboBox, QPushButton, QDialog, QWidget, QSlider,
-    QListWidget, QSplitter, QFrame, QGraphicsOpacityEffect
+    QListWidget, QSplitter, QFrame, QGraphicsOpacityEffect, QListWidgetItem
 )
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, QEasingCurve, pyqtSignal, QSize
-from PyQt5.QtGui import QColor, QIcon, QFont, QPalette
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, QEasingCurve, pyqtSignal, QSize, QThread
+from PyQt5.QtGui import QColor, QIcon, QFont, QPalette, QBrush
 import chess
 import sys
 import time
 from chess_engine import find_best_move as find_best_move1
 from chess_engine2 import find_best_move as find_best_move2
+
+# Thread class for AI computation to prevent GUI freezing
+class AIWorker(QThread):
+    finished = pyqtSignal(str)
+    
+    def __init__(self, fen, depth, engine_num=1):
+        super().__init__()
+        self.fen = fen
+        self.depth = depth
+        self.engine_num = engine_num
+        
+    def run(self):
+        try:
+            if self.engine_num == 1:
+                result = find_best_move1(self.fen, self.depth)
+            else:
+                result = find_best_move2(self.fen, self.depth)
+            self.finished.emit(result)
+        except Exception as e:
+            self.finished.emit("")
 
 class AnimatedLabel(QLabel):
     """Custom QLabel with animation capabilities for chess pieces"""
@@ -200,6 +220,7 @@ class PawnPromotionDialog(QDialog):
                 border: 2px solid #bdc3c7;
                 border-radius: 6px;
                 background-color: white;
+                color: #333;
             }
             QComboBox::drop-down {
                 border: 0px;
@@ -209,6 +230,7 @@ class PawnPromotionDialog(QDialog):
                 background-color: white;
                 selection-background-color: #3498db;
                 selection-color: white;
+                color: #333;
             }
         """)
         self.promotion_choice.addItems(["Queen", "Rook", "Bishop", "Knight"])
@@ -247,12 +269,15 @@ class PawnPromotionDialog(QDialog):
         return piece_map[self.promotion_choice.currentText()]
 
 class GameOverPopup(QDialog):
+    play_again_signal = pyqtSignal()
+    return_home_signal = pyqtSignal()
+    
     def __init__(self, result, parent=None, custom_message=None):
         super().__init__(parent)
         self.setWindowTitle("Game Over")
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)  
         self.setModal(True)
-        self.setFixedSize(450, 250)
+        self.setFixedSize(450, 300)  # Made taller for additional buttons
         
         self.setStyleSheet("""
             QDialog {
@@ -311,15 +336,19 @@ class GameOverPopup(QDialog):
         """)
         layout.addWidget(label)
 
-        ok_button = QPushButton("Close", self)
-        ok_button.setCursor(Qt.PointingHandCursor)
-        ok_button.setStyleSheet(f"""
+        # Button container
+        button_layout = QHBoxLayout()
+        
+        # Play Again button
+        self.play_again_button = QPushButton("Play Again", self)
+        self.play_again_button.setCursor(Qt.PointingHandCursor)
+        self.play_again_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {color};
                 color: white;
-                font-size: 16pt;
+                font-size: 14pt;
                 font-weight: bold;
-                padding: 12px 24px;
+                padding: 12px 20px;
                 border-radius: 8px;
                 border: none;
                 min-width: 150px;
@@ -331,51 +360,116 @@ class GameOverPopup(QDialog):
                 background-color: #{color[1:]}aa;
             }}
         """)
-        ok_button.clicked.connect(self.accept)
+        self.play_again_button.clicked.connect(self.play_again)
         
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(ok_button)
-        button_layout.addStretch()
+        # Return Home button
+        self.return_home_button = QPushButton("Return to Home", self)
+        self.return_home_button.setCursor(Qt.PointingHandCursor)
+        self.return_home_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #607D8B;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 12px 20px;
+                border-radius: 8px;
+                border: none;
+                min-width: 180px;
+            }}
+            QPushButton:hover {{
+                background-color: #78909C;
+            }}
+            QPushButton:pressed {{
+                background-color: #455A64;
+            }}
+        """)
+        self.return_home_button.clicked.connect(self.return_home)
+        
+        button_layout.addWidget(self.play_again_button)
+        button_layout.addWidget(self.return_home_button)
         
         layout.addLayout(button_layout)
         layout.addSpacing(10)
 
         self.setLayout(layout)
+    
+    def play_again(self):
+        self.play_again_signal.emit()
+        self.accept()
+    
+    def return_home(self):
+        self.return_home_signal.emit()
+        self.accept()
 
 class MoveHistoryWidget(QFrame):
-    """Widget to display the move history"""
+    """Widget to display the move history with improved contrast"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.StyledPanel)
         self.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
                 border-radius: 8px;
-                border: 1px solid #ddd;
-            }
-            QListWidget {
-                background-color: #f5f5f5;
-                font-size: 12pt;
-                border: none;
-            }
-            QListWidget::item {
-                padding: 4px;
-            }
-            QListWidget::item:selected {
-                background-color: #e0e0e0;
-                color: #333;
+                border: 1px solid #cccccc;
             }
         """)
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        
+        # Title with improved visibility
+        title_container = QFrame()
+        title_container.setStyleSheet("""
+            QFrame {
+                background-color: #4a4a4a;
+                border-radius: 6px;
+                padding: 5px;
+            }
+        """)
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
         
         title = QLabel("Move History")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333; padding: 5px;")
-        layout.addWidget(title)
+        title.setStyleSheet("""
+            font-size: 16pt; 
+            font-weight: bold; 
+            color: white; 
+            padding: 5px;
+        """)
+        title_layout.addWidget(title)
+        layout.addWidget(title_container)
         
+        # Custom styled list widget
         self.move_list = QListWidget()
+        self.move_list.setStyleSheet("""
+            QListWidget {
+                background-color: #ffffff;
+                alternate-background-color: #f0f0f0;
+                font-size: 14pt;
+                font-family: 'Consolas', monospace;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QListWidget::item {
+                color: #222222;
+                padding: 5px;
+                border-bottom: 1px solid #e0e0e0;
+                min-height: 30px;
+            }
+            QListWidget::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #e6f7ff;
+            }
+            QListWidget:item:alternate {
+                background-color: #f5f5f5;
+            }
+        """)
         self.move_list.setAlternatingRowColors(True)
         layout.addWidget(self.move_list)
         
@@ -418,14 +512,23 @@ class MoveHistoryWidget(QFrame):
         if check:
             notation += "+"
             
-        # Format the move in the list
+        # Format the move in the list with improved styling
         if color == "White":
-            self.move_list.addItem(f"{notation.ljust(12)}")
+            item = QListWidgetItem(f"{notation.ljust(12)}")
+            item_color = "#0000aa"  # Dark blue for white's moves
+            item.setForeground(QBrush(QColor(item_color)))
+            self.move_list.addItem(item)
         else:
             # Update the last item to include the black move
             current_item = self.move_list.item(self.move_list.count() - 1)
             current_text = current_item.text()
-            current_item.setText(f"{current_text} {notation}")
+            combined_text = f"{current_text} {notation}"
+            current_item.setText(combined_text)
+            
+            # Apply custom styling with a bold font
+            font = current_item.font()
+            font.setBold(True)
+            current_item.setFont(font)
             
         # Scroll to the bottom
         self.move_list.scrollToBottom()
@@ -435,19 +538,20 @@ class MoveHistoryWidget(QFrame):
         self.move_list.clear()
 
 class ThinkingIndicator(QLabel):
-    """Visual indicator for AI thinking state"""
+    """Visual indicator for AI thinking state with improved visibility"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
         self.setStyleSheet("""
-            font-size: 14pt;
+            font-size: 16pt;
             font-weight: bold;
-            color: #333;
-            background-color: rgba(255, 255, 255, 0.7);
+            color: white;
+            background-color: rgba(52, 73, 94, 0.8);
             border-radius: 10px;
             padding: 10px;
+            border: 1px solid white;
         """)
-        self.setFixedHeight(40)
+        self.setFixedHeight(50)
         self.dots = 0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_dots)
@@ -472,21 +576,260 @@ class ThinkingIndicator(QLabel):
         dot_text = "." * self.dots
         self.setText(f"{self.base_text}{dot_text.ljust(3)}")
 
+class ControlButton(QPushButton):
+    """Enhanced button with better visual feedback"""
+    def __init__(self, text, color, icon=None, parent=None):
+        super().__init__(text, parent)
+        self.base_color = color
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(60)  # Taller buttons for better visibility
+        
+        if icon:
+            self.setIcon(icon)
+            self.setIconSize(QSize(24, 24))
+        
+        self.updateStyle()
+    
+    def updateStyle(self):
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.base_color};
+                color: white;
+                font-size: 16pt;
+                font-weight: bold;
+                padding: 12px 20px;
+                border-radius: 10px;
+                border: none;
+                text-align: center;
+            }}
+            QPushButton:hover {{
+                background-color: {self._lighten_color(self.base_color, 1.1)};
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            }}
+            QPushButton:pressed {{
+                background-color: {self._darken_color(self.base_color, 1.1)};
+            }}
+            QPushButton:disabled {{
+                background-color: #bbbbbb;
+                color: #dddddd;
+            }}
+        """)
+    
+    def _lighten_color(self, color, factor):
+        # Simple implementation to lighten a hex color
+        if color.startswith('#'):
+            color = color[1:]
+        r = min(255, int(int(color[0:2], 16) * factor))
+        g = min(255, int(int(color[2:4], 16) * factor))
+        b = min(255, int(int(color[4:6], 16) * factor))
+        return f"#{r:02x}{g:02x}{b:02x}"
+    
+    def _darken_color(self, color, factor):
+        # Simple implementation to darken a hex color
+        if color.startswith('#'):
+            color = color[1:]
+        r = max(0, int(int(color[0:2], 16) / factor))
+        g = max(0, int(int(color[2:4], 16) / factor))
+        b = max(0, int(int(color[4:6], 16) / factor))
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+class EnhancedSlider(QWidget):
+    """Custom slider with better visual design and labels"""
+    valueChanged = pyqtSignal(int)
+    
+    def __init__(self, title, min_val, max_val, default_val, min_label, max_label, parent=None):
+        super().__init__(parent)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Title with improved visibility
+        title_container = QFrame()
+        title_container.setStyleSheet("""
+            QFrame {
+                background-color: #e8e8e8;
+                border-radius: 6px;
+                border: 1px solid #cccccc;
+            }
+        """)
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(10, 8, 10, 8)
+        
+        title_label = QLabel(title)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("""
+            font-size: 14pt; 
+            font-weight: bold; 
+            color: #333333;
+        """)
+        title_layout.addWidget(title_label)
+        layout.addWidget(title_container)
+        
+        # Create the styled slider
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimum(min_val)
+        self.slider.setMaximum(max_val)
+        self.slider.setValue(default_val)
+        self.slider.setTickPosition(QSlider.TicksBelow)
+        self.slider.setTickInterval((max_val - min_val) // 4)
+        self.slider.setStyleSheet("""
+            QSlider {
+                height: 30px;
+                margin: 10px 0;
+            }
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: #d0d0d0;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #2196F3;
+                width: 18px;
+                height: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+                border: 1px solid #1976D2;
+            }
+            QSlider::sub-page:horizontal {
+                background: #64B5F6;
+                border-radius: 4px;
+            }
+        """)
+        self.slider.valueChanged.connect(self._emit_value_changed)
+        layout.addWidget(self.slider)
+        
+        # Add min/max labels
+        labels_layout = QHBoxLayout()
+        min_text = QLabel(min_label)
+        min_text.setStyleSheet("color: #333333; font-weight: bold;")
+        
+        max_text = QLabel(max_label)
+        max_text.setAlignment(Qt.AlignRight)
+        max_text.setStyleSheet("color: #333333; font-weight: bold;")
+        
+        labels_layout.addWidget(min_text)
+        labels_layout.addWidget(max_text)
+        layout.addLayout(labels_layout)
+        
+    def _emit_value_changed(self, value):
+        self.valueChanged.emit(value)
+        
+    def value(self):
+        return self.slider.value()
+    
+    def setValue(self, value):
+        self.slider.setValue(value)
+
+# Completely redesigned AI Control Panel with better buttons
+class AIControlPanel(QFrame):
+    """AI control panel with improved button design and layout"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #f8f8f8;
+                border-radius: 10px;
+                border: 2px solid #cccccc;
+                padding: 15px;
+            }
+        """)
+        
+        # Set a minimum width for the entire panel to ensure adequate space
+        self.setMinimumWidth(300)
+        
+        # Create main layout with ample spacing
+        layout = QVBoxLayout(self)
+        layout.setSpacing(20)
+        layout.setContentsMargins(15, 15, 15, 15)
+        
+        # Title header
+        title = QLabel("AI Controls")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("""
+            font-size: 18pt; 
+            font-weight: bold; 
+            color: white; 
+            padding: 10px;
+            background-color: #4a4a4a;
+            border-radius: 6px;
+        """)
+        layout.addWidget(title)
+        
+        # Create beautiful control buttons
+        button_container = QWidget()
+        button_layout = QVBoxLayout(button_container)
+        button_layout.setSpacing(15)  # Increased spacing between buttons
+        
+        # Start button
+        self.start_button = ControlButton("▶ Start", "#27ae60")
+        
+        # Pause button
+        self.pause_button = ControlButton("⏸ Pause", "#f39c12")
+        
+        # Reset button
+        self.reset_button = ControlButton("↻ Reset", "#3498db")
+        
+        # Return to Home button
+        self.home_button = ControlButton("🏠 Home", "#e74c3c")
+        
+        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.pause_button)
+        button_layout.addWidget(self.reset_button)
+        button_layout.addWidget(self.home_button)
+        
+        layout.addWidget(button_container)
+        
+        # Create enhanced sliders
+        self.speed_slider = EnhancedSlider(
+            "AI Move Speed:", 200, 2000, 800, "Fast", "Slow", self
+        )
+        layout.addWidget(self.speed_slider)
+        
+        self.depth_slider = EnhancedSlider(
+            "AI Thinking Depth:", 2, 5, 3, "Shallow", "Deep", self
+        )
+        layout.addWidget(self.depth_slider)
+        
+        # Add current depth display with improved visibility
+        depth_container = QFrame()
+        depth_container.setStyleSheet("""
+            QFrame {
+                background-color: #333333;
+                border-radius: 5px;
+                padding: 8px;
+            }
+        """)
+        
+        depth_layout = QVBoxLayout(depth_container)
+        self.depth_value = QLabel("Current depth: 3")
+        self.depth_value.setAlignment(Qt.AlignCenter)
+        self.depth_value.setStyleSheet("""
+            font-size: 14pt;
+            font-weight: bold;
+            color: white;
+            padding: 5px;
+        """)
+        depth_layout.addWidget(self.depth_value)
+        
+        layout.addWidget(depth_container)
+
 class ChessBoard(QMainWindow):
-    def __init__(self, mode="human_ai"):
+    def __init__(self, mode="human_ai", parent_app=None):
         super().__init__()
         
         self.mode = mode
+        self.parent_app = parent_app
         
         if self.mode == "human_ai":
             self.setWindowTitle("Chess - Human vs AI")
         else:
             self.setWindowTitle("Chess - AI vs AI")
             
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 900, 650)  # Made window larger
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #f0f0f0;
+                background-color: #2c3e50;
             }
         """)
         
@@ -505,49 +848,55 @@ class ChessBoard(QMainWindow):
         self.ai_game_running = False
         self.move_delay = 800  # Default animation speed
         self.ai_depth = 3  # Default AI search depth
+        self.ai_worker = None  # For background AI computation
 
         # Create the main layout
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
+        self.central_widget.setStyleSheet("background-color: #2c3e50;")
+        
         main_layout = QHBoxLayout(self.central_widget)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(15)
 
         # Create the game area
         game_area = QWidget()
         game_layout = QVBoxLayout(game_area)
-        game_layout.setSpacing(10)
+        game_layout.setSpacing(15)
         
         # Create board container with a nice border
         board_container = QFrame()
         board_container.setFrameShape(QFrame.StyledPanel)
         board_container.setStyleSheet("""
             QFrame {
-                background-color: #2c3e50;
+                background-color: #34495e;
                 border-radius: 10px;
-                padding: 10px;
+                padding: 15px;
+                border: 2px solid #455a64;
             }
         """)
         board_layout = QVBoxLayout(board_container)
         
         # Create board widget
         board_widget = QWidget()
-        board_widget.setStyleSheet("background-color: #34495e; padding: 5px; border-radius: 5px;")
+        board_widget.setStyleSheet("background-color: #455a64; padding: 5px; border-radius: 5px;")
         self.board_layout = QGridLayout(board_widget)
         self.board_layout.setSpacing(0)
-        self.board_layout.setContentsMargins(0, 0, 0, 0)
+        self.board_layout.setContentsMargins(5, 5, 5, 5)
         
         # Create the squares and labels
         self.squares = []
-        # Add column labels (a-h)
+        # Add column labels (a-h) with improved visibility
         for j in range(8):
             col_label = QLabel(chr(97 + j))  # 'a' through 'h'
             col_label.setAlignment(Qt.AlignCenter)
-            col_label.setStyleSheet("color: white; font-weight: bold;")
+            col_label.setStyleSheet("color: white; font-weight: bold; font-size: 12pt;")
             self.board_layout.addWidget(col_label, 8, j)
             
-            # Add row labels (1-8)
+            # Add row labels (1-8) with improved visibility
             row_label = QLabel(str(8 - j))
             row_label.setAlignment(Qt.AlignCenter)
-            row_label.setStyleSheet("color: white; font-weight: bold;")
+            row_label.setStyleSheet("color: white; font-weight: bold; font-size: 12pt;")
             self.board_layout.addWidget(row_label, j, 8)
         
         for i in range(8):
@@ -566,16 +915,17 @@ class ChessBoard(QMainWindow):
         board_layout.addWidget(board_widget)
         board_layout.addWidget(self.thinking_indicator)
         
-        # Create status label
+        # Create status label with improved visibility
         self.status_label = QLabel(self)
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet("""
             font-size: 18px; 
-            color: #333; 
-            padding: 10px;
-            background-color: #ecf0f1;
-            border-radius: 5px;
             font-weight: bold;
+            color: white; 
+            padding: 10px;
+            background-color: #34495e;
+            border-radius: 5px;
+            border: 1px solid #455a64;
         """)
         
         # Add to game area
@@ -584,154 +934,34 @@ class ChessBoard(QMainWindow):
         
         # Create right sidebar for controls and move history
         sidebar = QWidget()
-        sidebar.setFixedWidth(250)
+        sidebar.setMinimumWidth(350)  # Increased width for better visibility
         sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setSpacing(15)
         
-        # Create and add move history widget
+        # Create and add move history widget - larger size
         self.move_history = MoveHistoryWidget()
-        sidebar_layout.addWidget(self.move_history)
+        self.move_history.setMinimumHeight(350)  # Make move history larger
+        sidebar_layout.addWidget(self.move_history, 3)  # Give it more space
         
-        # Add AI control panel for AI vs AI mode
-        if self.mode == "ai_ai":
-            control_panel = QFrame()
-            control_panel.setFrameShape(QFrame.StyledPanel)
-            control_panel.setStyleSheet("""
-                QFrame {
-                    background-color: #f5f5f5;
-                    border-radius: 8px;
-                    border: 1px solid #ddd;
-                    padding: 10px;
-                }
-                QLabel {
-                    font-size: 12pt;
-                    color: #333;
-                }
-                QSlider {
-                    height: 20px;
-                }
-                QSlider::groove:horizontal {
-                    height: 8px;
-                    background: #bbb;
-                    border-radius: 4px;
-                }
-                QSlider::handle:horizontal {
-                    background: #3498db;
-                    width: 18px;
-                    height: 18px;
-                    margin: -5px 0;
-                    border-radius: 9px;
-                }
-            """)
-            control_layout = QVBoxLayout(control_panel)
-            
-            # Add title
-            control_title = QLabel("AI Controls")
-            control_title.setAlignment(Qt.AlignCenter)
-            control_title.setStyleSheet("font-size: 14pt; font-weight: bold; padding-bottom: 10px;")
-            control_layout.addWidget(control_title)
-            
-            # Add button container
-            button_container = QWidget()
-            button_layout = QHBoxLayout(button_container)
-            button_layout.setSpacing(8)
-            
-            # Style buttons with modern look
-            button_style = """
-                QPushButton {
-                    font-size: 12pt;
-                    font-weight: bold;
-                    padding: 8px;
-                    border-radius: 5px;
-                    color: white;
-                }
-                QPushButton:hover {
-                    opacity: 0.8;
-                }
-                QPushButton:disabled {
-                    background-color: #bdc3c7;
-                }
-            """
-            
-            self.start_button = QPushButton("Start")
-            self.start_button.setStyleSheet(button_style + "background-color: #27ae60;")
-            self.start_button.clicked.connect(self.start_ai_game)
-            
-            self.pause_button = QPushButton("Pause")
-            self.pause_button.setStyleSheet(button_style + "background-color: #f39c12;")
-            self.pause_button.clicked.connect(self.pause_ai_game)
-            self.pause_button.setEnabled(False)
-            
-            self.reset_button = QPushButton("Reset")
-            self.reset_button.setStyleSheet(button_style + "background-color: #3498db;")
-            self.reset_button.clicked.connect(self.reset_game)
-            
-            button_layout.addWidget(self.start_button)
-            button_layout.addWidget(self.pause_button)
-            button_layout.addWidget(self.reset_button)
-            
-            control_layout.addWidget(button_container)
-            
-            # Add speed slider
-            speed_label = QLabel("AI Move Speed:")
-            speed_label.setAlignment(Qt.AlignLeft)
-            control_layout.addWidget(speed_label)
-            
-            self.speed_slider = QSlider(Qt.Horizontal)
-            self.speed_slider.setMinimum(200)
-            self.speed_slider.setMaximum(2000)
-            self.speed_slider.setValue(800)
-            self.speed_slider.setTickPosition(QSlider.TicksBelow)
-            self.speed_slider.setTickInterval(400)
-            self.speed_slider.valueChanged.connect(self.update_move_speed)
-            control_layout.addWidget(self.speed_slider)
-            
-            # Add labels for min/max speed
-            speed_range = QWidget()
-            speed_range_layout = QHBoxLayout(speed_range)
-            speed_range_layout.setContentsMargins(0, 0, 0, 0)
-            
-            fast_label = QLabel("Fast")
-            slow_label = QLabel("Slow")
-            slow_label.setAlignment(Qt.AlignRight)
-            
-            speed_range_layout.addWidget(fast_label)
-            speed_range_layout.addWidget(slow_label)
-            control_layout.addWidget(speed_range)
-            
-            # Add AI depth control
-            depth_label = QLabel("AI Thinking Depth:")
-            depth_label.setAlignment(Qt.AlignLeft)
-            control_layout.addWidget(depth_label)
-            
-            self.depth_slider = QSlider(Qt.Horizontal)
-            self.depth_slider.setMinimum(2)
-            self.depth_slider.setMaximum(5)
-            self.depth_slider.setValue(3)
-            self.depth_slider.setTickPosition(QSlider.TicksBelow)
-            self.depth_slider.setTickInterval(1)
-            self.depth_slider.valueChanged.connect(self.update_ai_depth)
-            control_layout.addWidget(self.depth_slider)
-            
-            # Add labels for min/max depth
-            depth_range = QWidget()
-            depth_range_layout = QHBoxLayout(depth_range)
-            depth_range_layout.setContentsMargins(0, 0, 0, 0)
-            
-            shallow_label = QLabel("Shallow")
-            deep_label = QLabel("Deep")
-            deep_label.setAlignment(Qt.AlignRight)
-            
-            depth_range_layout.addWidget(shallow_label)
-            depth_range_layout.addWidget(deep_label)
-            control_layout.addWidget(depth_range)
-            
-            # Add current depth display
-            self.depth_value = QLabel(f"Current depth: {self.ai_depth}")
-            self.depth_value.setAlignment(Qt.AlignCenter)
-            self.depth_value.setStyleSheet("font-weight: bold; padding-top: 5px;")
-            control_layout.addWidget(self.depth_value)
-            
-            sidebar_layout.addWidget(control_panel)
+        # Add AI control panel
+        # Create enhanced control panel
+        self.control_panel = AIControlPanel()
+        
+        # Connect signals from control panel elements
+        self.control_panel.start_button.clicked.connect(self.start_ai_game)
+        self.control_panel.pause_button.clicked.connect(self.pause_ai_game)
+        self.control_panel.reset_button.clicked.connect(self.reset_game)
+        self.control_panel.home_button.clicked.connect(self.return_to_home)
+        
+        # Disable pause button initially
+        self.control_panel.pause_button.setEnabled(False)
+        
+        # No need to hide home button for any mode - useful in both
+        
+        self.control_panel.speed_slider.valueChanged.connect(self.update_move_speed)
+        self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
+        
+        sidebar_layout.addWidget(self.control_panel, 2)
         
         # Add everything to main layout
         main_layout.addWidget(game_area, 3)
@@ -754,6 +984,12 @@ class ChessBoard(QMainWindow):
         # Initialize the board
         self.update_board()
     
+    def return_to_home(self):
+        """Return to the start screen"""
+        self.close()
+        if self.parent_app:
+            self.parent_app.show_start_screen()
+        
     def update_move_speed(self, value):
         """Update the AI move animation speed"""
         self.move_delay = value
@@ -763,14 +999,14 @@ class ChessBoard(QMainWindow):
     def update_ai_depth(self, value):
         """Update the AI thinking depth"""
         self.ai_depth = value
-        self.depth_value.setText(f"Current depth: {value}")
+        self.control_panel.depth_value.setText(f"Current depth: {value}")
     
     def start_ai_game(self):
         """Start the AI vs AI game"""
         if not self.ai_game_running and not self.board.is_game_over():
             self.ai_game_running = True
-            self.start_button.setEnabled(False)
-            self.pause_button.setEnabled(True)
+            self.control_panel.start_button.setEnabled(False)
+            self.control_panel.pause_button.setEnabled(True)
             self.turn = 'ai1' if self.board.turn == chess.WHITE else 'ai2'
             
             # Update status with animated thinking indicator
@@ -785,8 +1021,14 @@ class ChessBoard(QMainWindow):
         self.ai_game_running = False
         self.ai_timer.stop()
         self.thinking_indicator.stop_thinking()
-        self.start_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
+        
+        # Cancel any ongoing AI computation
+        if self.ai_worker and self.ai_worker.isRunning():
+            self.ai_worker.terminate()
+            self.ai_worker = None
+            
+        self.control_panel.start_button.setEnabled(True)
+        self.control_panel.pause_button.setEnabled(False)
         self.status_label.setText("Game paused")
     
     def reset_game(self):
@@ -794,11 +1036,26 @@ class ChessBoard(QMainWindow):
         self.ai_game_running = False
         self.ai_timer.stop()
         self.thinking_indicator.stop_thinking()
+        
+        # Cancel any ongoing AI computation
+        if self.ai_worker and self.ai_worker.isRunning():
+            self.ai_worker.terminate()
+            self.ai_worker = None
+            
         self.board = chess.Board()
-        self.turn = 'ai1'
-        self.start_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.status_label.setText("Press 'Start' to begin AI vs AI game")
+        if self.mode == "human_ai":
+            self.turn = 'human'
+        else:
+            self.turn = 'ai1'
+            
+        self.control_panel.start_button.setEnabled(True)
+        self.control_panel.pause_button.setEnabled(False)
+        
+        if self.mode == "human_ai":
+            self.status_label.setText("Your turn")
+        else:
+            self.status_label.setText("Press 'Start' to begin AI vs AI game")
+            
         self.last_move_from = None
         self.last_move_to = None
         self.move_history.clear_history()
@@ -852,105 +1109,106 @@ class ChessBoard(QMainWindow):
             # Update thinking indicator
             self.thinking_indicator.start_thinking(current_ai)
             
-            # Find the best move (run in a non-blocking way)
-            fen = self.board.fen()
-            
-            # Use different engines for different AIs
-            if self.turn == 'ai1':
-                best_move_uci = find_best_move1(fen, self.ai_depth)
-            else:
-                best_move_uci = find_best_move2(fen, self.ai_depth)
-            
-            if best_move_uci:
-                # Convert the move to chess.Move object
-                move = chess.Move.from_uci(best_move_uci)
-                
-                # Get information for the move
-                from_square = chess.square_rank(move.from_square), chess.square_file(move.from_square)
-                to_square = chess.square_rank(move.to_square), chess.square_file(move.to_square)
-                
-                # Convert to UI coordinates
-                from_pos = (7 - from_square[0], from_square[1])
-                to_pos = (7 - to_square[0], to_square[1])
-                
-                # Get the piece information
-                piece = self.board.piece_at(move.from_square)
-                piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
-                
-                # Determine piece symbol for animation
-                piece_symbols = {
-                    (chess.PAWN, chess.WHITE): "♟",
-                    (chess.PAWN, chess.BLACK): "♟",
-                    (chess.KNIGHT, chess.WHITE): "♞",
-                    (chess.KNIGHT, chess.BLACK): "♞",
-                    (chess.BISHOP, chess.WHITE): "♝",
-                    (chess.BISHOP, chess.BLACK): "♝",
-                    (chess.ROOK, chess.WHITE): "♜",
-                    (chess.ROOK, chess.BLACK): "♜",
-                    (chess.QUEEN, chess.WHITE): "♛",
-                    (chess.QUEEN, chess.BLACK): "♛",
-                    (chess.KING, chess.WHITE): "♚",
-                    (chess.KING, chess.BLACK): "♚",
-                }
-                piece_symbol = piece_symbols.get((piece.piece_type, piece.color), "")
-                
-                # Check if move is a capture
-                is_capture = self.board.is_capture(move)
-                
-                # Start the animation
-                self.ai_timer.stop()  # Pause the AI timer during animation
-                self.thinking_indicator.stop_thinking()
-                
-                # Function to execute after animation completes
-                def after_animation():
-                    # Make the move on the actual board
-                    self.board.push(move)
-                    
-                    # Add move to history
-                    from_uci = chess.square_name(move.from_square)
-                    to_uci = chess.square_name(move.to_square)
-                    is_check = self.board.is_check()
-                    
-                    self.move_history.add_move(
-                        piece, 
-                        from_uci, 
-                        to_uci, 
-                        "White" if piece.color == chess.WHITE else "Black",
-                        is_capture,
-                        is_check,
-                        move.promotion
-                    )
-                    
-                    # Update the board display
-                    self.last_move_from = from_pos
-                    self.last_move_to = to_pos
-                    self.update_board()
-                    
-                    # Check if game is over
-                    if self.board.is_game_over():
-                        self.ai_game_running = False
-                        self.start_button.setEnabled(False)
-                        self.pause_button.setEnabled(False)
-                        self.show_game_over_popup()
-                    else:
-                        # Switch to next AI
-                        self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
-                        
-                        # Resume the AI timer for next move
-                        self.ai_timer.start(self.move_delay)
-                
-                # Animate the piece movement
-                self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_animation)
-            else:
-                # No valid move found
-                self.ai_game_running = False
-                self.ai_timer.stop()
-                self.thinking_indicator.stop_thinking()
-                self.status_label.setText("No valid moves available")
-        else:
-            # Game is over or paused
+            # Stop the AI timer during calculation
             self.ai_timer.stop()
+            
+            # Use AI worker thread to prevent GUI freezing
+            engine_num = 1 if self.turn == 'ai1' else 2
+            self.ai_worker = AIWorker(self.board.fen(), self.ai_depth, engine_num)
+            self.ai_worker.finished.connect(self.handle_ai_move_result)
+            self.ai_worker.start()
+    
+    def handle_ai_move_result(self, best_move_uci):
+        """Handle the result from the AI computation thread"""
+        if not self.ai_game_running:
+            return
+            
+        if best_move_uci:
+            # Convert the move to chess.Move object
+            move = chess.Move.from_uci(best_move_uci)
+            
+            # Get information for the move
+            from_square = chess.square_rank(move.from_square), chess.square_file(move.from_square)
+            to_square = chess.square_rank(move.to_square), chess.square_file(move.to_square)
+            
+            # Convert to UI coordinates
+            from_pos = (7 - from_square[0], from_square[1])
+            to_pos = (7 - to_square[0], to_square[1])
+            
+            # Get the piece information
+            piece = self.board.piece_at(move.from_square)
+            piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
+            
+            # Determine piece symbol for animation
+            piece_symbols = {
+                (chess.PAWN, chess.WHITE): "♟",
+                (chess.PAWN, chess.BLACK): "♟",
+                (chess.KNIGHT, chess.WHITE): "♞",
+                (chess.KNIGHT, chess.BLACK): "♞",
+                (chess.BISHOP, chess.WHITE): "♝",
+                (chess.BISHOP, chess.BLACK): "♝",
+                (chess.ROOK, chess.WHITE): "♜",
+                (chess.ROOK, chess.BLACK): "♜",
+                (chess.QUEEN, chess.WHITE): "♛",
+                (chess.QUEEN, chess.BLACK): "♛",
+                (chess.KING, chess.WHITE): "♚",
+                (chess.KING, chess.BLACK): "♚",
+            }
+            piece_symbol = piece_symbols.get((piece.piece_type, piece.color), "")
+            
+            # Check if move is a capture
+            is_capture = self.board.is_capture(move)
+            
+            # Stop thinking indicator during animation
             self.thinking_indicator.stop_thinking()
+            
+            # Function to execute after animation completes
+            def after_animation():
+                # Make the move on the actual board
+                self.board.push(move)
+                
+                # Add move to history
+                from_uci = chess.square_name(move.from_square)
+                to_uci = chess.square_name(move.to_square)
+                is_check = self.board.is_check()
+                
+                self.move_history.add_move(
+                    piece, 
+                    from_uci, 
+                    to_uci, 
+                    "White" if piece.color == chess.WHITE else "Black",
+                    is_capture,
+                    is_check,
+                    move.promotion
+                )
+                
+                # Update the board display
+                self.last_move_from = from_pos
+                self.last_move_to = to_pos
+                self.update_board()
+                
+                # Check if game is over
+                if self.board.is_game_over():
+                    self.ai_game_running = False
+                    self.control_panel.start_button.setEnabled(False)
+                    self.control_panel.pause_button.setEnabled(False)
+                    self.show_game_over_popup()
+                else:
+                    # Switch to next AI
+                    self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                    
+                    # Resume the AI timer for next move
+                    self.ai_timer.start(self.move_delay)
+            
+            # Animate the piece movement
+            self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_animation)
+        else:
+            # No valid move found
+            self.ai_game_running = False
+            self.thinking_indicator.stop_thinking()
+            self.control_panel.start_button.setEnabled(True)
+            self.control_panel.pause_button.setEnabled(False)
+            self.status_label.setText("No valid moves available")
     
     def find_valid_moves(self, from_square):
         """Find all valid moves for a piece on the given square"""
@@ -1031,10 +1289,13 @@ class ChessBoard(QMainWindow):
                 self.ai_game_running = False
                 self.ai_timer.stop()
                 self.thinking_indicator.stop_thinking()
-                if self.mode == "ai_ai":
-                    self.start_button.setEnabled(False)
-                    self.pause_button.setEnabled(False)
-                    self.show_game_over_popup()
+                if self.ai_worker and self.ai_worker.isRunning():
+                    self.ai_worker.terminate()
+                    self.ai_worker = None
+                    
+                self.control_panel.start_button.setEnabled(False)
+                self.control_panel.pause_button.setEnabled(False)
+                self.show_game_over_popup()
         else:
             # Update status label based on turn
             if self.mode == "human_ai":
@@ -1155,7 +1416,7 @@ class ChessBoard(QMainWindow):
                             self.thinking_indicator.start_thinking("AI")
                             
                             # Allow UI to update before AI starts computing
-                            QTimer.singleShot(800, self.ai_move)
+                            QTimer.singleShot(100, self.ai_move)
                         else:
                             self.show_game_over_popup()
                     
@@ -1178,98 +1439,101 @@ class ChessBoard(QMainWindow):
                 self.update_board()
 
     def ai_move(self):
-        """Calculate and execute the AI's move"""
+        """Calculate and execute the AI's move using a background thread"""
         try:
             # Update status with thinking animation
             self.thinking_indicator.start_thinking("AI")
             
-            fen = self.board.fen()
-
             # Check if game is already over
             if self.board.is_game_over():
                 self.thinking_indicator.stop_thinking()
                 self.show_game_over_popup()
                 return
 
-            # Find best move
-            best_move_uci = find_best_move1(fen, self.ai_depth)
-
-            if best_move_uci:
-                move = chess.Move.from_uci(best_move_uci)
-                
-                # Get animation info
-                from_square = move.from_square
-                to_square = move.to_square
-                piece = self.board.piece_at(from_square)
-                
-                from_pos = (7 - chess.square_rank(from_square), chess.square_file(from_square))
-                to_pos = (7 - chess.square_rank(to_square), chess.square_file(to_square))
-                
-                # Determine piece symbol and color for animation
-                piece_symbols = {
-                    (chess.PAWN, chess.WHITE): "♟",
-                    (chess.PAWN, chess.BLACK): "♟",
-                    (chess.KNIGHT, chess.WHITE): "♞",
-                    (chess.KNIGHT, chess.BLACK): "♞",
-                    (chess.BISHOP, chess.WHITE): "♝",
-                    (chess.BISHOP, chess.BLACK): "♝",
-                    (chess.ROOK, chess.WHITE): "♜",
-                    (chess.ROOK, chess.BLACK): "♜",
-                    (chess.QUEEN, chess.WHITE): "♛",
-                    (chess.QUEEN, chess.BLACK): "♛",
-                    (chess.KING, chess.WHITE): "♚",
-                    (chess.KING, chess.BLACK): "♚",
-                }
-                piece_symbol = piece_symbols.get((piece.piece_type, piece.color), "")
-                piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
-                is_capture = self.board.is_capture(move)
-                
-                # Stop thinking indicator during animation
-                self.thinking_indicator.stop_thinking()
-                
-                # Animate the move
-                def after_ai_move():
-                    # Execute move on the board
-                    self.board.push(move)
-                    
-                    # Add to move history
-                    from_uci = chess.square_name(from_square)
-                    to_uci = chess.square_name(to_square)
-                    is_check = self.board.is_check()
-                    
-                    self.move_history.add_move(
-                        piece, 
-                        from_uci, 
-                        to_uci, 
-                        "Black",
-                        is_capture,
-                        is_check,
-                        move.promotion
-                    )
-                    
-                    # Update last move highlighting
-                    self.last_move_from = from_pos
-                    self.last_move_to = to_pos
-                    
-                    # Update board and switch back to human's turn
-                    self.update_board()
-                    self.turn = 'human'
-                    
-                    # Check if game is over
-                    if self.board.is_game_over():
-                        self.show_game_over_popup()
-                
-                # Start animation
-                self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_ai_move)
-            else:
-                self.thinking_indicator.stop_thinking()
-                self.status_label.setText("AI could not find a valid move!")
+            # Use a worker thread to prevent GUI freezing
+            self.ai_worker = AIWorker(self.board.fen(), self.ai_depth)
+            self.ai_worker.finished.connect(self.handle_human_ai_move_result)
+            self.ai_worker.start()
+            
         except Exception as e:
             self.thinking_indicator.stop_thinking()
             self.status_label.setText(f"Error during AI move: {str(e)}")
+    
+    def handle_human_ai_move_result(self, best_move_uci):
+        """Handle the result of AI computation for human vs AI mode"""
+        if best_move_uci:
+            move = chess.Move.from_uci(best_move_uci)
+            
+            # Get animation info
+            from_square = move.from_square
+            to_square = move.to_square
+            piece = self.board.piece_at(from_square)
+            
+            from_pos = (7 - chess.square_rank(from_square), chess.square_file(from_square))
+            to_pos = (7 - chess.square_rank(to_square), chess.square_file(to_square))
+            
+            # Determine piece symbol and color for animation
+            piece_symbols = {
+                (chess.PAWN, chess.WHITE): "♟",
+                (chess.PAWN, chess.BLACK): "♟",
+                (chess.KNIGHT, chess.WHITE): "♞",
+                (chess.KNIGHT, chess.BLACK): "♞",
+                (chess.BISHOP, chess.WHITE): "♝",
+                (chess.BISHOP, chess.BLACK): "♝",
+                (chess.ROOK, chess.WHITE): "♜",
+                (chess.ROOK, chess.BLACK): "♜",
+                (chess.QUEEN, chess.WHITE): "♛",
+                (chess.QUEEN, chess.BLACK): "♛",
+                (chess.KING, chess.WHITE): "♚",
+                (chess.KING, chess.BLACK): "♚",
+            }
+            piece_symbol = piece_symbols.get((piece.piece_type, piece.color), "")
+            piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
+            is_capture = self.board.is_capture(move)
+            
+            # Stop thinking indicator during animation
+            self.thinking_indicator.stop_thinking()
+            
+            # Animate the move
+            def after_ai_move():
+                # Execute move on the board
+                self.board.push(move)
+                
+                # Add to move history
+                from_uci = chess.square_name(from_square)
+                to_uci = chess.square_name(to_square)
+                is_check = self.board.is_check()
+                
+                self.move_history.add_move(
+                    piece, 
+                    from_uci, 
+                    to_uci, 
+                    "Black",
+                    is_capture,
+                    is_check,
+                    move.promotion
+                )
+                
+                # Update last move highlighting
+                self.last_move_from = from_pos
+                self.last_move_to = to_pos
+                
+                # Update board and switch back to human's turn
+                self.update_board()
+                self.turn = 'human'
+                
+                # Check if game is over
+                if self.board.is_game_over():
+                    self.show_game_over_popup()
+            
+            # Start animation
+            self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_ai_move)
+        else:
+            self.thinking_indicator.stop_thinking()
+            self.status_label.setText("AI could not find a valid move!")
 
     def show_game_over_popup(self):
-        """Show the game over popup with appropriate message"""
+        """Show the game over popup with appropriate message and options"""
         result = self.board.result()
         
         if self.mode == "human_ai":
@@ -1285,36 +1549,48 @@ class ChessBoard(QMainWindow):
                 
             self.popup = GameOverPopup(result, self, winner_text)
         
-        if self.popup.exec_() == QDialog.Accepted:
-            if self.mode == "human_ai":
-                self.close_game()
-            else:
-                self.reset_game()
+        # Connect popup signals
+        self.popup.play_again_signal.connect(self.reset_game)
+        self.popup.return_home_signal.connect(self.return_to_home)
+        
+        self.popup.exec_()
 
     def close_game(self):
         """Close the game window"""
         self.close()
 
+class ChessApp(QApplication):
+    def __init__(self, args):
+        super().__init__(args)
+        self.setStyle("Fusion")  # Use Fusion style for better cross-platform look
+        
+        # Apply custom palette for better overall aesthetics
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor(44, 62, 80))
+        palette.setColor(QPalette.WindowText, QColor(236, 240, 241))
+        palette.setColor(QPalette.Base, QColor(255, 255, 255))
+        palette.setColor(QPalette.AlternateBase, QColor(245, 245, 245))
+        palette.setColor(QPalette.Button, QColor(52, 73, 94))
+        palette.setColor(QPalette.ButtonText, QColor(236, 240, 241))
+        self.setPalette(palette)
+        
+        self.chess_window = None
+        self.show_start_screen()
+    
+    def show_start_screen(self):
+        """Show the start screen to select game mode"""
+        # Close any existing chess window
+        if self.chess_window:
+            self.chess_window.close()
+            self.chess_window = None
+            
+        start_screen = StartScreen()
+        if start_screen.exec_() == QDialog.Accepted:
+            mode = start_screen.get_mode()
+            if mode:
+                self.chess_window = ChessBoard(mode, self)
+                self.chess_window.show()
+
 if __name__ == "__main__":
-    app = QApplication([])
-    app.setStyle("Fusion")  # Use Fusion style for better cross-platform look
-    
-    # Apply custom palette for better overall aesthetics
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor(240, 240, 240))
-    palette.setColor(QPalette.WindowText, QColor(50, 50, 50))
-    palette.setColor(QPalette.Base, QColor(255, 255, 255))
-    palette.setColor(QPalette.AlternateBase, QColor(245, 245, 245))
-    palette.setColor(QPalette.Button, QColor(240, 240, 240))
-    palette.setColor(QPalette.ButtonText, QColor(50, 50, 50))
-    app.setPalette(palette)
-    
-    start_screen = StartScreen()
-    if start_screen.exec_() == QDialog.Accepted:
-        mode = start_screen.get_mode()
-        if mode:
-            window = ChessBoard(mode)
-            window.show()
-            app.exec_()
-    else:
-        sys.exit()
+    app = ChessApp(sys.argv)
+    sys.exit(app.exec_())

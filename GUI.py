@@ -8,12 +8,6 @@ import chess
 from chess_engine import find_best_move
 
 class PawnPromotionDialog(QDialog):
-    """
-    Dialog for selecting a piece when promoting a pawn.
-    
-    Allows the player to choose between Queen, Rook, Bishop, and Knight
-    when a pawn reaches the opposite end of the board.
-    """
     def __init__(self, parent=None):
         """Initialize the promotion dialog with selection options."""
         super().__init__(parent)
@@ -69,24 +63,12 @@ class PawnPromotionDialog(QDialog):
         }
         return piece_map[self.promotion_choice.currentText()]
 
-class ModernGameOverPopup(QDialog):
-    """
-    A stylish popup dialog shown when the game ends.
-    
-    Displays the game result with appropriate styling and a button to close the game.
-    """
+class GameOverPopup(QDialog):
     def __init__(self, result, parent=None):
-        """
-        Initialize the game over popup with the game result.
-        
-        Args:
-            result (str): The game result ('1-0', '0-1', or '1/2-1/2')
-            parent (QWidget, optional): Parent widget
-        """
         super().__init__(parent)
         self.setWindowTitle("Game Over")
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)  # Frameless for modern look
-        self.setModal(True)  # Block interaction with the main window
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)  
+        self.setModal(True) 
         
         # Set modern styling with rounded corners
         self.setStyleSheet("""
@@ -180,7 +162,7 @@ class ChessBoard(QMainWindow):
         self.setGeometry(100, 100, 500, 500)
         
         # Initialize chess logic
-        self.board = chess.Board("8/7p/4k1p1/8/8/p3KNP1/1b5P/8 w - - 0 50")
+        self.board = chess.Board()
         self.selected_square = None
         self.turn = 'human'  # Start with human player
         self.valid_moves = []  # Store valid moves for the selected piece
@@ -222,15 +204,6 @@ class ChessBoard(QMainWindow):
         self.update_board()
 
     def find_valid_moves(self, from_square):
-        """
-        Find all valid moves for the selected piece.
-        
-        Args:
-            from_square (str): Chess coordinate of the selected square (e.g., 'e4')
-            
-        Returns:
-            list: List of chess.Move objects representing valid moves
-        """
         valid_moves = []
         from_square_index = chess.parse_square(from_square)
         
@@ -311,17 +284,12 @@ class ChessBoard(QMainWindow):
             # Update status label based on turn
             if self.turn == 'human':
                 self.status_label.setText("Your turn")
+                self.status_label.setStyleSheet("font-size: 20px; color: #FFFFFF; padding: 10px;")
             else:
                 self.status_label.setText("AI is thinking...")
+                self.status_label.setStyleSheet("font-size: 20px; color: #FFFFFF; padding: 10px;")
 
     def player_move(self, i, j):
-        """
-        Handle player's move when a square is clicked.
-        
-        Args:
-            i (int): Row index of the clicked square
-            j (int): Column index of the clicked square
-        """
         # Convert UI coordinates to chess coordinates
         square = chess.square(j, 7 - i)
         current_square = chess.SQUARE_NAMES[square]
@@ -350,7 +318,7 @@ class ChessBoard(QMainWindow):
                     piece = self.board.piece_at(from_square)
                     
                     is_promotion = (piece and piece.piece_type == chess.PAWN and
-                                  (chess.square_rank(square) == 0 or chess.square_rank(square) == 7))
+                                (chess.square_rank(square) == 0 or chess.square_rank(square) == 7))
 
                     # Handle pawn promotion
                     if is_promotion:
@@ -372,6 +340,7 @@ class ChessBoard(QMainWindow):
             self.valid_moves = []
             
             if move_made:
+                # Update board immediately after player's move
                 self.update_board()
                 print(self.board.fen())
                 
@@ -380,13 +349,13 @@ class ChessBoard(QMainWindow):
                     # Switch to AI's turn
                     self.turn = 'ai'
                     self.status_label.setText("AI is thinking...")
-                    self.update_board()
                     
-                    # Use QApplication.processEvents to update UI before AI move
+                    # Force UI update before AI begins thinking
                     QApplication.processEvents()
                     
-                    # Give AI a moment to "think" then make its move
-                    self.ai_move()
+                    # Use a timer to delay the AI move by 1 second
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(1000, self.ai_move)
             else:
                 # If clicking another piece of the same color, select it instead
                 piece = self.board.piece_at(square)
@@ -431,11 +400,8 @@ class ChessBoard(QMainWindow):
             print(f"Error during AI move: {e}")
 
     def show_game_over_popup(self):
-        """
-        Display the game over popup with the result and wait for user acknowledgment.
-        """
         result = self.board.result()
-        self.popup = ModernGameOverPopup(result, self)
+        self.popup = GameOverPopup(result, self)
         
         # Close the game when the user clicks OK
         if self.popup.exec_() == QDialog.Accepted:

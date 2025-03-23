@@ -5,7 +5,7 @@ Chess engine using minimax algorithm with alpha-beta pruning
 import math
 import sys
 from typing import List
-from temp_table import TranspositionTable
+from search.transposition_table import TranspositionTable
 import chess
 import chess.polyglot
 from evaluation.static_evaluation import evaluate_board

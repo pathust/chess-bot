@@ -1,7 +1,6 @@
+from typing import Optional
 import chess
-import math
-from typing import Optional, Tuple
-
+import chess.polyglot
 class TranspositionTable:
     lookup_failed = -1
     exact = 0
@@ -25,7 +24,7 @@ class TranspositionTable:
 
     @property
     def index(self) -> int:
-        zobrist_key = self.board.zobrist_hash()
+        zobrist_key = chess.polyglot.zobrist_hash(self.board)
         return zobrist_key % self.count
 
     def try_get_stored_move(self) -> Optional[chess.Move]:
@@ -39,34 +38,46 @@ class TranspositionTable:
             return self.lookup_failed
 
         entry = self.entries.get(self.index)
-        if entry:
-            if entry.key == self.board.zobrist_hash():
-                if entry.depth >= depth:
-                    corrected_score = self.correct_retrieved_mate_score(entry.value, ply_from_root)
-                    if entry.node_type == self.exact:
-                        return corrected_score
-                    elif entry.node_type == self.upper_bound and corrected_score <= alpha:
-                        return corrected_score
-                    elif entry.node_type == self.lower_bound and corrected_score >= beta:
-                        return corrected_score
+        if entry and entry.key == chess.polyglot.zobrist_hash(self.board):
+            if entry.depth >= depth:
+                corrected_score = self.correct_retrieved_mate_score(entry.value, ply_from_root)
+
+                if entry.node_type == self.exact:
+                    return corrected_score
+                elif entry.node_type == self.upper_bound and corrected_score <= alpha:
+                    return corrected_score
+                elif entry.node_type == self.lower_bound and corrected_score >= beta:
+                    return corrected_score
         return self.lookup_failed
 
-    def store_evaluation(self, depth: int, num_ply_searched: int, eval: int, eval_type: int, move: chess.Move):
+    def store_evaluation(self,
+        depth: int,
+        num_ply_searched: int,
+        eval: int,
+        eval_type: int,
+        move: chess.Move
+    ):
         if not self.enabled:
             return
 
-        entry = Entry(self.board.zobrist_hash(), self.correct_mate_score_for_storage(eval, num_ply_searched), depth, eval_type, move)
+        entry = Entry(
+            chess.polyglot.zobrist_hash(self.board),
+            self.correct_mate_score_for_storage(eval, num_ply_searched),
+            depth,
+            eval_type,
+            move
+        )
         self.entries[self.index] = entry
 
     def correct_mate_score_for_storage(self, score: int, num_ply_searched: int) -> int:
         if self.is_mate_score(score):
-            sign = math.copysign(1, score)
+            sign = 1 if score > 0 else -1
             return int((abs(score) + num_ply_searched) * sign)
         return score
 
     def correct_retrieved_mate_score(self, score: int, num_ply_searched: int) -> int:
         if self.is_mate_score(score):
-            sign = math.copysign(1, score)
+            sign = 1 if score > 0 else -1
             return int((abs(score) - num_ply_searched) * sign)
         return score
 
@@ -86,27 +97,3 @@ class Entry:
     def get_size() -> int:
         # Assuming that the size of the Entry is similar to the original in C#
         return 64  # Size of Entry in bytes
-
-
-# Example usage:
-
-# Initialize a chess board
-board = chess.Board()
-
-# Create a transposition table with 16MB size
-tt = TranspositionTable(board, 16)
-
-# Example of storing an evaluation
-move = chess.Move.from_uci("e2e4")
-tt.store_evaluation(depth=5, num_ply_searched=10, eval=500, eval_type=TranspositionTable.exact, move=move)
-
-# Example of looking up an evaluation
-eval_result = tt.lookup_evaluation(depth=5, ply_from_root=2, alpha=-1000, beta=1000)
-print(f"Evaluation: {eval_result}")
-
-# Example of retrieving the stored move
-stored_move = tt.try_get_stored_move()
-if stored_move:
-    print(f"Stored Move: {stored_move}")
-else:
-    print("No stored move")

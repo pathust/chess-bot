@@ -122,10 +122,3 @@ class PieceSquareTable:
     def piece_square_value(piece, square):
         """Trả về giá trị của một quân cờ ở một ô cụ thể"""
         return PieceSquareTable.tables[piece][square]
-
-# Ví dụ sử dụng
-board = chess.Board()
-square = chess.square(0, 0)  # Lấy ô a1
-piece = chess.PAWN  # Quân cờ là Pawn
-value = PieceSquareTable.piece_square_value(piece, square)
-print(f"Piece value at square {chess.square_name(square)}: {value}")

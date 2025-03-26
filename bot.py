@@ -1,160 +1,206 @@
-import chess
 import threading
-from search.searcher import Searcher
 from threading import Event
-from opening_book import OpeningBook
+import chess
+from search.searcher import Searcher
 
-class Bot:
-    # Settings
-    use_opening_book = True
-    max_book_ply = 16
-    # Limit the amount of time the bot can spend per move (mainly for
-    # games against human opponents, so not boring to play against).
-    use_max_think_time = False
-    max_think_time_ms = 2500
+class ChessBot:
+    def __init__(self, initial_fen=None):
+        """
+        Khởi tạo Bot cờ vua
+        
+        Args:
+            initial_fen (str, optional): Vị trí bàn cờ FEN ban đầu. Nếu None, sẽ dùng vị trí chuẩn.
+        """
+        # Khởi tạo bàn cờ
+        if initial_fen:
+            self.board = chess.Board(initial_fen)
+        else:
+            self.board = chess.Board()
 
-    def __init__(self):
-        self.board = chess.Board()
+        # Tạo searcher cho việc tìm kiếm nước đi tốt nhất
+        print("initialize searcher")
         self.searcher = Searcher(self.board)
-        self.book = OpeningBook("resources/book.txt")  # Đường dẫn tới file book
-        self.search_wait_handle = Event()
-        self.cancel_search_timer = None
 
-        # State
-        self.current_search_id = 0
-        self.is_quitting = False
+        # Trạng thái tìm kiếm
         self.is_thinking = False
-        self.latest_move_is_book_move = False
+        self.search_timer = None
 
-        # Callbacks
-        self.on_move_chosen = None  # Callback function when move is chosen
+        # Callback
+        self.on_move_chosen = None
 
-        # Set the callback from the searcher to our method
-        self.searcher.on_search_complete = self.on_search_complete
-
-        # Start search thread
-        self.search_thread = threading.Thread(target=self.search_thread, daemon=True)
+        # Thiết lập thread tìm kiếm
+        self.search_event = Event()
+        self.search_thread = threading.Thread(target=self._search_thread, daemon=True)
         self.search_thread.start()
 
-    def notify_new_game(self):
-        """Reset search data for a new game"""
+    def set_position(self, fen=None, moves=None):
+        """
+        Thiết lập vị trí bàn cờ
+        
+        Args:
+            fen (str, optional): Chuỗi FEN mô tả vị trí bàn cờ
+            moves (list, optional): Danh sách các nước đi từ vị trí FEN
+        """
+        if fen:
+            self.board.set_fen(fen)
+        else:
+            self.board.reset()
+
+        if moves:
+            for move in moves:
+                self.board.push_uci(move)
+
+        # Xóa dữ liệu tìm kiếm cũ khi thay đổi vị trí
         self.searcher.clear_for_new_position()
 
-    def set_position(self, fen):
-        """Set the board to a specific position"""
-        self.board.set_fen(fen)
-
-    def make_move(self, move_string):
-        """Make a move on the board"""
-        move = chess.Move.from_uci(move_string)
-        self.board.push(move)
-    
-    def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, 
-                         increment_white_ms, increment_black_ms):
-        """Calculate how much time to spend thinking about the current move"""
-        my_time_remaining_ms = time_remaining_white_ms if self.board.turn == chess.WHITE else time_remaining_black_ms
-        my_increment_ms = increment_white_ms if self.board.turn == chess.WHITE else increment_black_ms
+    def make_move(self, move_uci):
+        """
+        Thực hiện một nước đi trên bàn cờ
         
-        # Get a fraction of remaining time to use for current move
-        think_time_ms = my_time_remaining_ms / 40.0
-        
-        # Clamp think time if a maximum limit is imposed
-        if self.use_max_think_time:
-            think_time_ms = min(self.max_think_time_ms, think_time_ms)
-        
-        # Add increment
-        if my_time_remaining_ms > my_increment_ms * 2:
-            think_time_ms += my_increment_ms * 0.8
-        
-        min_think_time = min(50, my_time_remaining_ms * 0.25)
-        return int(max(min_think_time, think_time_ms))
-    
-    def think_timed(self, time_ms):
-        """Start thinking about a move with a time limit"""
-        self.latest_move_is_book_move = False
-        self.is_thinking = True
-        
-        if self.cancel_search_timer:
-            self.cancel_search_timer.cancel()
-            self.cancel_search_timer = None
-        
-        # Try to get a move from the opening book
-        if self.try_get_opening_book_move():
-            self.latest_move_is_book_move = True
-            self.on_search_complete(self.book_move)
-        else:
-            self.start_search(time_ms)
-    
-    def start_search(self, time_ms):
-        """Start the search with a time limit"""
-        self.current_search_id += 1
-        self.search_wait_handle.set()
-        
-        # Set up timer to stop search
-        search_id = self.current_search_id
-        self.cancel_search_timer = threading.Timer(time_ms / 1000.0, lambda: self.end_search(search_id))
-        self.cancel_search_timer.daemon = True
-        self.cancel_search_timer.start()
-    
-    def search_thread(self):
-        """Thread that performs the actual search"""
-        while not self.is_quitting:
-            self.search_wait_handle.wait()
-            self.search_wait_handle.clear()
-            if not self.is_quitting:
-                self.searcher.start_search()
-    
-    def stop_thinking(self):
-        """Stop the current search"""
-        self.end_search()
-    
-    def quit(self):
-        """Stop all operations and prepare for program exit"""
-        self.is_quitting = True
-        self.end_search()
-        self.search_wait_handle.set()  # Wake up search thread so it can exit
-    
-    def get_board_diagram(self):
-        """Get a string representation of the current board"""
-        return str(self.board)
-    
-    def end_search(self, search_id=None):
-        """End the current search"""
-        if self.cancel_search_timer:
-            self.cancel_search_timer.cancel()
-            self.cancel_search_timer = None
-        
-        if search_id is not None:
-            # If search timer has been cancelled, the search will have been stopped already
-            if self.cancel_search_timer and self.cancel_search_timer.is_alive():
-                return
+        Args:
+            move_uci (str): Nước đi ở định dạng UCI (vd: "e2e4")
             
-            if self.current_search_id != search_id:
-                return  # Don't end a different search than the one requested
+        Returns:
+            bool: True nếu nước đi hợp lệ và đã được thực hiện
+        """
+        try:
+            move = chess.Move.from_uci(move_uci)
+            if move in self.board.legal_moves:
+                self.board.push(move)
+                return True
+            return False
+        except ValueError:
+            return False
+
+    def think(self, depth=3, time_ms=None, callback=None):
+        """
+        Bắt đầu tìm kiếm nước đi tốt nhất với độ sâu hoặc thời gian cho trước
         
+        Args:
+            depth (int): Độ sâu tìm kiếm (mặc định: 3)
+            time_ms (int, optional): Thời gian tìm kiếm tối đa (ms)
+            callback (function, optional): Hàm callback khi tìm được nước đi tốt nhất
+        """
+        if self.is_thinking:
+            self.stop_thinking()
+
+        self.is_thinking = True
+
+        # Lưu callback
+        if callback:
+            self.on_move_chosen = callback
+
+        # Thiết lập timer nếu giới hạn thời gian
+        if time_ms:
+            self.search_timer = threading.Timer(time_ms / 1000.0, self.stop_thinking)
+            self.search_timer.daemon = True
+            self.search_timer.start()
+
+        # Cài đặt thông tin tìm kiếm
+        self.search_depth = depth
+
+        # Kích hoạt thread tìm kiếm
+        self.search_event.set()
+
+    def _search_thread(self):
+        """Thread tìm kiếm nước đi tốt nhất"""
+        while True:
+            self.search_event.wait()
+            self.search_event.clear()
+
+            # Thiết lập callback cho searcher
+            self.searcher.on_search_complete = self._on_search_complete
+
+            # Bắt đầu tìm kiếm (searcher sẽ gọi callback khi hoàn thành)
+            self.searcher.start_search()
+
+    def _on_search_complete(self, move):
+        """Callback khi tìm kiếm hoàn thành"""
+        self.is_thinking = False
+
+        # Hủy timer nếu có
+        if self.search_timer:
+            self.search_timer.cancel()
+            self.search_timer = None
+
+        # Gọi callback của người dùng
+        if self.on_move_chosen:
+            # Chuyển đổi từ đối tượng Move của python-chess sang chuỗi UCI
+            move_uci = move.uci()
+            self.on_move_chosen(move_uci)
+
+    def stop_thinking(self):
+        """Dừng quá trình tìm kiếm hiện tại"""
         if self.is_thinking:
             self.searcher.end_search()
-    
-    def on_search_complete(self, move):
-        """Called when a search completes or a book move is found"""
-        self.is_thinking = False
+            self.is_thinking = False
+
+            # Hủy timer nếu có
+            if self.search_timer:
+                self.search_timer.cancel()
+                self.search_timer = None
+
+    def get_best_move(self, depth=3, time_ms=None):
+        """
+        Tìm và trả về nước đi tốt nhất (blocking)
         
-        # Convert move to UCI format without promotion symbol '='
-        move_name = move.uci().replace("=", "")
-        
-        # Call the callback with the chosen move
-        if self.on_move_chosen:
-            self.on_move_chosen(move_name)
-    
-    def try_get_opening_book_move(self):
-        """Try to get a move from the opening book"""
-        if (self.use_opening_book and 
-            len(self.board.move_stack) <= self.max_book_ply):
+        Args:
+            depth (int): Độ sâu tìm kiếm
+            time_ms (int, optional): Thời gian tìm kiếm tối đa (ms)
             
-            book_move_str = self.book.try_get_book_move(self.board)
-            if book_move_str:
-                self.book_move = chess.Move.from_uci(book_move_str)
-                return True
-        
-        self.book_move = chess.Move.null()
-        return False
+        Returns:
+            str: Nước đi tốt nhất ở định dạng UCI
+        """
+        # Tạo một Event để đồng bộ
+        result_event = Event()
+        best_move = [None]  # Sử dụng list để lưu kết quả từ callback
+
+        def on_move_found(move):
+            best_move[0] = move
+            result_event.set()
+
+        # Bắt đầu tìm kiếm
+        self.think(depth, time_ms, on_move_found)
+
+        # Chờ kết quả
+        result_event.wait()
+
+        return best_move[0]
+
+    def get_board_fen(self):
+        """Trả về trạng thái bàn cờ dưới dạng FEN"""
+        return self.board.fen()
+
+    def get_legal_moves(self):
+        """Trả về danh sách các nước đi hợp lệ"""
+        return [move.uci() for move in self.board.legal_moves]
+
+    def is_game_over(self):
+        """Kiểm tra xem trò chơi đã kết thúc chưa"""
+        return self.board.is_game_over()
+
+    def get_game_result(self):
+        """Trả về kết quả của trò chơi nếu đã kết thúc"""
+        if not self.board.is_game_over():
+            return "Game in progress"
+
+        if self.board.is_checkmate():
+            return "Checkmate - " + ("Black wins" if self.board.turn == chess.WHITE else "White wins")
+        elif self.board.is_stalemate():
+            return "Draw by stalemate"
+        elif self.board.is_insufficient_material():
+            return "Draw by insufficient material"
+        elif self.board.is_fifty_moves():
+            return "Draw by fifty-move rule"
+        elif self.board.is_repetition():
+            return "Draw by repetition"
+        return "Game over"
+
+    def get_board_unicode(self):
+        """Trả về bàn cờ dưới dạng Unicode để hiển thị trong console"""
+        return str(self.board)
+
+    def quit(self):
+        """Dọn dẹp tài nguyên khi kết thúc"""
+        self.stop_thinking()
+        self.search_event.set()  # Wake up thread để nó có thể thoát

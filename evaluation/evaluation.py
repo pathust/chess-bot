@@ -103,6 +103,7 @@ class Evaluation:
         else:
             enemy_development_score = max((enemy_piece_square_score + 10) / 130, 0, 1)
             uncastled_king_penalty = int(50 * enemy_development_score)
+            # chưa sử dụng
 
         open_file_against_king_penalty = 0
         if (enemy_material.num_rooks > 1 or
@@ -129,7 +130,7 @@ class Evaluation:
         pawns = list(board.pieces(chess.PAWN, colour_index))
         opponent_pawns = list(board.pieces(chess.PAWN, chess.WHITE if colour_index == chess.BLACK else chess.BLACK))
         friendly_pawns = pawns  # For clarity
-        
+
         masks = self.get_passed_pawn_masks(colour_index, board)
         bonus = 0
         num_isolated_pawns = 0
@@ -251,38 +252,38 @@ class Evaluation:
             my_pawns=board.pieces(chess.PAWN, colour_index),
             enemy_pawns=board.pieces(chess.PAWN, opponent_index)
         )
-        
+
         # Calculate endgame transition value
         total_material = (material_info.num_rooks * self.rook_value +
                          material_info.num_knights * self.knight_value +
                          material_info.num_bishops * self.bishop_value +
                          material_info.num_queens * self.queen_value)
-        
+
         # Normalize the endgame transition based on total material
         material_info.endgame_t = max(0, min(1, 1 - (total_material / self.endgame_material_start)))
-        
+
         return material_info
 
     def get_passed_pawn_masks(self, colour_index: int, board: chess.Board):
         """Generate masks of squares that must be empty for a pawn to be 'passed'"""
         masks = {}
         is_white = colour_index == chess.WHITE
-        
+
         # For each pawn, create a mask of squares in front of it
         for square in board.pieces(chess.PAWN, colour_index):
             file = chess.square_file(square)
             rank = chess.square_rank(square)
             target_mask = set()
-            
+
             # Direction of pawn movement depends on color
             direction = 1 if is_white else -1
-            
+
             # Add squares directly in front of the pawn
             current_rank = rank + direction
             while 0 <= current_rank < 8:
                 target_mask.add(chess.square(file, current_rank))
                 current_rank += direction
-            
+
             # Also add diagonal squares that could contain enemy pawns
             for adjacent_file in [file-1, file+1]:
                 if 0 <= adjacent_file < 8:
@@ -290,25 +291,25 @@ class Evaluation:
                     while 0 <= current_rank < 8:
                         target_mask.add(chess.square(adjacent_file, current_rank))
                         current_rank += direction
-            
+
             masks[square] = target_mask
-            
+
         return masks
 
     def get_adjacent_file_masks(self, file_index: int):
         """Generate a set of squares on adjacent files"""
         adjacent_files = set()
-        
+
         # Add squares on file to the left (if it exists)
         if file_index > 0:
             for rank in range(8):
                 adjacent_files.add(chess.square(file_index - 1, rank))
-                
+
         # Add squares on file to the right (if it exists)
         if file_index < 7:
             for rank in range(8):
                 adjacent_files.add(chess.square(file_index + 1, rank))
-                
+
         return adjacent_files
 
 class MaterialInfo:

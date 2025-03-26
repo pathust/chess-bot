@@ -73,7 +73,7 @@ class EnhancedSlider(QWidget):
             QFrame {
                 background-color: #e8e8e8;
                 border-radius: 6px;
-                border: 1px solid #cccccc;
+                border: none;
             }
         """)
         title_layout = QVBoxLayout(title_container)

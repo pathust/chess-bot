@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QDialog,
     QSplitter, QFrame
 )
 from PyQt5.QtCore import Qt, QPoint, QTimer
@@ -17,6 +17,7 @@ class ChessBoard(QMainWindow):
     def __init__(self, mode="human_ai", parent_app=None):
         super().__init__()
         
+        self.popup = None
         self.mode = mode
         self.parent_app = parent_app
         
@@ -264,6 +265,12 @@ class ChessBoard(QMainWindow):
             self.ai_worker = None
             self.ai_computation_active = False
             
+        # Properly clean up the popup reference
+        if hasattr(self, 'popup') and self.popup:
+            self.popup.close()
+            self.popup.deleteLater()  # Ensure Qt properly destroys the dialog
+            self.popup = None
+            
         self.close()
         if self.parent_app:
             self.parent_app.show_start_screen()
@@ -342,6 +349,10 @@ class ChessBoard(QMainWindow):
         self.last_move_to = None
         self.move_history.clear_history()
         self.update_board()
+
+        if hasattr(self, 'popup') and self.popup:
+            self.popup.close()
+            self.popup = None
     
     def animate_piece_movement(self, from_pos, to_pos, piece_symbol, piece_color, capture=False, callback=None):
         """Animate a piece moving from one square to another"""
@@ -824,6 +835,11 @@ class ChessBoard(QMainWindow):
 
     def show_game_over_popup(self):
         """Show the game over popup with appropriate message and options"""
+        # Delete any existing popup first
+        if self.popup:
+            self.popup.close()
+            self.popup = None
+            
         result = self.board.result()
         
         if self.mode == "human_ai":

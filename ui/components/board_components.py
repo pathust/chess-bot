@@ -77,7 +77,7 @@ class ThinkingIndicator(QLabel):
         
     def start_thinking(self, ai_name):
         """Start the thinking animation"""
-        self.base_text = f"{ai_name} thinking"
+        self.base_text = f"{ai_name} is thinking"
         self.dots = 0
         self.setText(f"{self.base_text}...")
         self.show()

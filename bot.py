@@ -1,6 +1,7 @@
 import threading
 from threading import Event
 import chess
+import time
 from search.searcher import Searcher
 
 class ChessBot:
@@ -9,7 +10,7 @@ class ChessBot:
         Khởi tạo Bot cờ vua
         
         Args:
-            initial_fen (str, optional): Vị trí bàn cờ FEN ban đầu. Nếu None, sẽ dùng vị trí chuẩn.
+            initial_fen (str, optional): Vị trí bàn cờ FEN ban đầu
         """
         # Khởi tạo bàn cờ
         if initial_fen:
@@ -18,14 +19,16 @@ class ChessBot:
             self.board = chess.Board()
 
         # Tạo searcher cho việc tìm kiếm nước đi tốt nhất
-        print("initialize searcher")
+        print("Initializing searcher")
         self.searcher = Searcher(self.board)
 
         # Trạng thái tìm kiếm
         self.is_thinking = False
+        self.current_search_id = 0
         self.search_timer = None
-
-        # Callback
+        self.search_cancelled = False
+        
+        # Callback người dùng
         self.on_move_chosen = None
 
         # Thiết lập thread tìm kiếm
@@ -72,75 +75,163 @@ class ChessBot:
         except ValueError:
             return False
 
-    def think(self, depth=3, time_ms=None, callback=None):
+    def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
         """
-        Bắt đầu tìm kiếm nước đi tốt nhất với độ sâu hoặc thời gian cho trước
+        Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại
         
         Args:
-            depth (int): Độ sâu tìm kiếm (mặc định: 3)
-            time_ms (int, optional): Thời gian tìm kiếm tối đa (ms)
-            callback (function, optional): Hàm callback khi tìm được nước đi tốt nhất
+            time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
+            time_remaining_black_ms (int): Thời gian còn lại của đen (ms)
+            increment_white_ms (int): Thời gian cộng thêm mỗi nước của trắng (ms)
+            increment_black_ms (int): Thời gian cộng thêm mỗi nước của đen (ms)
+            
+        Returns:
+            int: Thời gian suy nghĩ được đề xuất (ms)
         """
-        if self.is_thinking:
-            self.stop_thinking()
+        # Lấy thời gian còn lại của bên đang đi
+        my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
+        my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
+        
+        # Tính thời gian suy nghĩ là một phần của thời gian còn lại
+        think_time_ms = my_time_remaining_ms / 40.0  # Chia cho 40 nước
+        
+        # Thêm một phần của thời gian cộng thêm
+        if my_time_remaining_ms > my_increment_ms * 2:
+            think_time_ms += my_increment_ms * 0.8
+            
+        # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
+        min_think_time = min(50, my_time_remaining_ms * 0.25)
+        return int(max(min_think_time, think_time_ms))
 
+    def think_timed(self, time_ms):
+        """
+        Bắt đầu tìm kiếm nước đi tốt nhất với thời gian giới hạn
+        
+        Args:
+            time_ms (int): Thời gian tìm kiếm tối đa (ms)
+        """
+        print(f"Starting timed search with {time_ms} ms")
         self.is_thinking = True
+        
+        # Hủy timer tìm kiếm hiện tại nếu có
+        if self.search_timer:
+            self.search_timer.cancel()
+            
+        # Bắt đầu tìm kiếm mới
+        self._start_search(time_ms)
 
-        # Lưu callback
-        if callback:
-            self.on_move_chosen = callback
-
-        # Thiết lập timer nếu giới hạn thời gian
+    def _start_search(self, time_ms=None):
+        """
+        Khởi tạo quá trình tìm kiếm mới
+        
+        Args:
+            time_ms (int, optional): Thời gian tìm kiếm tối đa (ms)
+        """
+        # Tăng ID tìm kiếm để phân biệt các tìm kiếm
+        self.current_search_id += 1
+        
+        # Kích hoạt thread tìm kiếm
+        self.search_cancelled = False
+        self.search_event.set()
+        
+        # Thiết lập timer nếu có giới hạn thời gian
         if time_ms:
-            self.search_timer = threading.Timer(time_ms / 1000.0, self.stop_thinking)
+            self.search_timer = threading.Timer(time_ms / 1000.0, 
+                                               lambda: self._end_search(self.current_search_id))
             self.search_timer.daemon = True
             self.search_timer.start()
-
-        # Cài đặt thông tin tìm kiếm
-        self.search_depth = depth
-
-        # Kích hoạt thread tìm kiếm
-        self.search_event.set()
 
     def _search_thread(self):
         """Thread tìm kiếm nước đi tốt nhất"""
         while True:
+            # Đợi kích hoạt
             self.search_event.wait()
             self.search_event.clear()
+            
+            if not self.search_cancelled:
+                # Bắt đầu tìm kiếm
+                try:
+                    print("Starting search")
+                    self.searcher.start_search()
+                    
+                    # Sau khi tìm kiếm hoàn thành, lấy nước đi tốt nhất từ searcher
+                    best_move = self.searcher.best_move
+                    print(f"Search completed, best_move: {best_move}")
+                    
+                    # Thông báo kết quả
+                    if self.is_thinking:
+                        self._search_completed(best_move)
+                        
+                except Exception as e:
+                    print(f"Error in search thread: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    # Nếu lỗi, trả về nước đi đầu tiên nếu có
+                    legal_moves = list(self.board.legal_moves)
+                    if legal_moves and self.is_thinking:
+                        self._search_completed(legal_moves[0])
+                    else:
+                        self._search_completed(None)
 
-            # Thiết lập callback cho searcher
-            self.searcher.on_search_complete = self._on_search_complete
-
-            # Bắt đầu tìm kiếm (searcher sẽ gọi callback khi hoàn thành)
-            self.searcher.start_search()
-
-    def _on_search_complete(self, move):
-        """Callback khi tìm kiếm hoàn thành"""
+    def _search_completed(self, move):
+        """
+        Xử lý khi tìm kiếm hoàn thành
+        
+        Args:
+            move (chess.Move): Nước đi tốt nhất được tìm thấy
+        """
+        if not self.is_thinking:
+            return
+            
+        # Cập nhật trạng thái
         self.is_thinking = False
+        
+        if self.search_timer:
+            self.search_timer.cancel()
+            self.search_timer = None
+            
+        # Gọi callback với nước đi tốt nhất
+        if self.on_move_chosen and move and not (hasattr(move, 'null') and move.null()):
+            move_uci = move.uci()
+            print(f"Calling callback with move: {move_uci}")
+            self.on_move_chosen(move_uci)
+        elif self.on_move_chosen:
+            print("No valid move found or null move")
+            self.on_move_chosen(None)
 
+    def _end_search(self, search_id=None):
+        """
+        Kết thúc quá trình tìm kiếm
+        
+        Args:
+            search_id (int, optional): ID của tìm kiếm cần kết thúc
+        """
+        # Nếu search_id được chỉ định, chỉ kết thúc tìm kiếm đó
+        if search_id is not None and search_id != self.current_search_id:
+            return
+            
         # Hủy timer nếu có
         if self.search_timer:
             self.search_timer.cancel()
             self.search_timer = None
-
-        # Gọi callback của người dùng
-        if self.on_move_chosen:
-            # Chuyển đổi từ đối tượng Move của python-chess sang chuỗi UCI
-            move_uci = move.uci()
-            self.on_move_chosen(move_uci)
+            
+        # Thông báo cho searcher dừng tìm kiếm
+        if self.is_thinking:
+            self.search_cancelled = True
+            self.searcher.end_search()
+            
+            # Lấy nước đi tốt nhất hiện tại nếu có
+            if hasattr(self.searcher, 'best_move') and self.searcher.best_move:
+                self._search_completed(self.searcher.best_move)
+            else:
+                self.is_thinking = False
 
     def stop_thinking(self):
         """Dừng quá trình tìm kiếm hiện tại"""
-        if self.is_thinking:
-            self.searcher.end_search()
-            self.is_thinking = False
+        self._end_search()
 
-            # Hủy timer nếu có
-            if self.search_timer:
-                self.search_timer.cancel()
-                self.search_timer = None
-
-    def get_best_move(self, depth=3, time_ms=None):
+    def get_best_move(self, depth=3, time_ms=3000):
         """
         Tìm và trả về nước đi tốt nhất (blocking)
         
@@ -151,20 +242,36 @@ class ChessBot:
         Returns:
             str: Nước đi tốt nhất ở định dạng UCI
         """
+        print(f"Finding best move at depth {depth}, time limit: {time_ms} ms")
+        
+        # Thiết lập độ sâu cho searcher
+        if hasattr(self.searcher, 'max_depth'):
+            self.searcher.max_depth = depth
+            
         # Tạo một Event để đồng bộ
         result_event = Event()
         best_move = [None]  # Sử dụng list để lưu kết quả từ callback
-
+        
         def on_move_found(move):
+            print(f"Best move found: {move}")
             best_move[0] = move
             result_event.set()
-
+            
+        # Lưu callback hiện tại
+        old_callback = self.on_move_chosen
+        self.on_move_chosen = on_move_found
+        
         # Bắt đầu tìm kiếm
-        self.think(depth, time_ms, on_move_found)
-
+        self.think_timed(time_ms if time_ms else 30000)  # Mặc định 30 giây
+        
         # Chờ kết quả
+        print("Waiting for search result...")
         result_event.wait()
-
+        print(f"Search completed, result: {best_move[0]}")
+        
+        # Khôi phục callback cũ
+        self.on_move_chosen = old_callback
+        
         return best_move[0]
 
     def get_board_fen(self):
@@ -200,7 +307,12 @@ class ChessBot:
         """Trả về bàn cờ dưới dạng Unicode để hiển thị trong console"""
         return str(self.board)
 
+    def notify_new_game(self):
+        """Thông báo cho bot rằng một ván cờ mới đã bắt đầu"""
+        self.searcher.clear_for_new_position()
+
     def quit(self):
         """Dọn dẹp tài nguyên khi kết thúc"""
         self.stop_thinking()
+        self.search_cancelled = True
         self.search_event.set()  # Wake up thread để nó có thể thoát

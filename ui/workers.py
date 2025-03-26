@@ -15,7 +15,7 @@ class AIWorker(QThread):
         try:
             if self.engine_num == 1:
                 chess_bot = ChessBot(self.fen)
-                result = chess_bot.get_best_move(depth=3)
+                result = chess_bot.get_best_move(time_ms=1000)
             else:
                 result = find_best_move(self.fen, self.depth)
 

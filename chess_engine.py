@@ -5,54 +5,8 @@ Chess engine using minimax algorithm with alpha-beta pruning
 import math
 import sys
 from typing import List
-from temp_table import TranspositionTable
 import chess
-import chess.polyglot
 from evaluation.static_evaluation import evaluate_board
-
-
-
-use_null_move: bool = False
-use_killer_move: bool = False
-use_pvs: bool = False
-use_transposition_table:bool = False
-use_moveorder:bool = False
-depth_pvs:int=0
-
-evalue_time = 0
-pruning_time =0
-number_node=0
-
-def evalue_inc():
-    global evalue_time
-    evalue_time =evalue_time+1
-
-def prun_inc():
-    global pruning_time
-    pruning_time =pruning_time+1
-
-def node_inc():
-    global number_node
-    number_node =number_node+1
-
-def set_find_technique(_use_null_move: bool=False,
-                       _use_killer_move: bool=False,
-                       _use_pvs:bool = False,
-                       _use_transposition_table:bool = False,
-                       _use_moveorder:bool = False,
-                       _depth:int = 0) -> bool:
-    global use_null_move
-    global use_killer_move
-    global use_pvs
-    global use_transposition_table
-    global use_moveorder
-    global depth_pvs
-    use_null_move=_use_null_move
-    use_killer_move=_use_killer_move
-    use_pvs=_use_pvs
-    use_transposition_table=_use_transposition_table
-    use_moveorder=_use_moveorder
-    depth_pvs=_depth/2
 
 def possible_null_move(board: chess.Board ) -> bool:
     """Hàm kiểm tra xem có thể thực hiện nullMove không""" 
@@ -76,51 +30,22 @@ def possible_null_move(board: chess.Board ) -> bool:
                 other = True
     return other and (number_pieces>4)
 
-"""killer move đã được tích hợp vào move order với add Score"""
-def move_priority(move: chess.Move,
-                  board: chess.Board,
-                  killer_moves: list[set],
-                  depth: int
-                  ):
-    target_piece = board.piece_at(move.to_square)
-    addScore=0
-    if move in killer_moves[depth]:
-        addScore=3
-    if target_piece is not None:  # Nếu nước đi ăn quân
-        return   target_piece.piece_type + addScore
-    elif board.gives_check(move):
-        return 5+addScore
-    elif board.piece_at(move.from_square).piece_type == chess.PAWN:
-        return 2+addScore
-    return 1 +addScore
-
 def null_move_search(board: chess.Board,
                     depth: int,
                     alpha: float,
                     beta: float,
-                    killer_moves: list[set],
-                    tt: TranspositionTable,
-                    use_pvs: bool,
-                    maximizing:bool = True
-                    ) -> float:
+                    killer_moves: list[set]) -> float:
     """hàm thực hiện null move"""
 
     #khi không thể nullmove thì trả về âm vô cùng
     if not possible_null_move(board):
-        if maximizing:
-            return  -math.inf
-        else:
-            return math.inf
+        return  -math.inf
     if depth -3 < 0:
         return evaluate_board(board.fen())
 
     board.push(chess.Move.null())
     #theo các báo cáo R=3 là giá trị tối ưu cho null movemove
-    if use_pvs:
-        eval=pvs(board,depth-2,alpha,beta,killer_moves,tt,not maximizing)
-    else:
-        eval = minimax(board, depth - 3, alpha, beta,killer_moves, tt ,not maximizing, 0, False)
-        #trên nhánh null move không cho add thêm vào killer move
+    eval = minimax(board, depth - 3, alpha, beta,killer_moves ,False, 0, True, False)
     board.pop()
     return eval
 
@@ -131,9 +56,8 @@ def quiescence_search(board: chess.Board,
                     maximizing: bool) -> float:
     """sử dụng sau khi đạt được depth =0"""
     """dừng khi game kết thúc hoặc đạt đến depth giới hạn(tránh stack overflow)"""
-    node_inc()
+
     if board.is_game_over() or depth == 0:
-        evalue_inc()
         return evaluate_board(board.fen())
     moves_significant = [move for move in board.legal_moves if board.gives_check(move) or board.is_capture(move)]
     if maximizing:
@@ -145,7 +69,6 @@ def quiescence_search(board: chess.Board,
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
-                prun_inc()
                 break
             
         if max_eval == -math.inf:
@@ -160,7 +83,6 @@ def quiescence_search(board: chess.Board,
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
-                prun_inc()
                 break
 
         if min_eval == math.inf: 
@@ -280,87 +202,41 @@ def sub_zzzzzz_quiescense(board: chess.Board,
             min_eval = evaluate_board(board.fen())       
         return min_eval
 
-"""giống minimax nhưng với pvs nullmove không dùng trong minimax, 
-k quiescense, k lưu kết quả vào bảng băm, chỉ xét small window (alpha, alpha+1) và (beta, beta+1)"""
-def pvs(board: chess.Board,
+def killer_move_search(
+            board: chess.Board,
             depth: int,
             alpha: float,
             beta: float,
-            killer_moves: list[set],
-            tt: TranspositionTable,
-            maximizing_player: bool) -> float:
-    node_inc()
-    global use_killer_move
-    global use_transposition_table
-    global use_null_move
-    global use_moveorder
-    global depth_pvs
-    #dùng bảng băm tra trạng thái
-    if use_transposition_table:
-        zobrist_key = chess.polyglot.zobrist_hash(board)
-        entry = tt.lookup(zobrist_key)
-        if not (entry is None):
-            if entry['depth']+2 >= depth:
-                return entry['value']
-            else:
-                killer_moves[depth].add(entry['best_move'])
-
-    if board.is_game_over() or depth <= depth_pvs:
-        evalue_inc()
-        return evaluate_board(board.fen())
-
-    if use_moveorder:
-        legal_moves = sorted(list(board.legal_moves), key=lambda move: move_priority(move, board,killer_moves,depth), reverse=True)
-    else:
-        legal_moves = list(board.legal_moves)
-    best=chess.Move.null()
+            killer_moves: list[list],
+            maximizing_player: bool,
+            quiescense_depth: int = 1,
+            null_move: bool = False) -> float:
+    
     if maximizing_player:
-        if(use_null_move):
-            max_eval = null_move_search(board, depth, alpha, beta, killer_moves,tt,True,True)  
-        else:
-            max_eval=-math.inf
-
-        for move in legal_moves:
+        max_eval = -math.inf        
+        for move in killer_moves[depth]:
+            if not board.is_legal(move):
+                continue
             board.push(move)
-            eval = pvs(board, depth - 1, alpha, beta, killer_moves, tt, False)
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves, False, quiescense_depth, null_move, True)# killer search on
             board.pop()
-            if(eval>max_eval):
-                best=move
-                max_eval=eval
+            max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
-                prun_inc()
                 break
-        
-        if use_killer_move:
-            if(not best is chess.Move.null()):
-                killer_moves[depth].add(best)
-            if depth>2:
-                killer_moves[depth-2].clear()
-
         return max_eval
     else:
-        if(use_null_move):
-            min_eval = null_move_search(board, depth, alpha, beta, killer_moves,tt,True,False)  
-        else:
-            min_eval=math.inf
-
-        for move in legal_moves:
+        min_eval = math.inf
+        for move in killer_moves[depth]:
+            if not board.is_legal(move):
+                continue
             board.push(move)
-            eval = pvs(board, depth - 1, alpha, beta, killer_moves, tt, True)
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves, True, quiescense_depth, null_move, True)
             board.pop()
-            if(eval<min_eval):
-                best=move
-                min_eval = eval
+            min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
-                prun_inc()
                 break
-
-        if use_killer_move:
-            killer_moves[depth].add(best)
-            if depth>2:
-                killer_moves[depth-2].clear() 
         return min_eval
 
 def minimax(board: chess.Board,
@@ -368,10 +244,10 @@ def minimax(board: chess.Board,
             alpha: float,
             beta: float,
             killer_moves: list[set],
-            tt: TranspositionTable,
             maximizing_player: bool,
             quiescense_depth: int = 1,
-            allow_add_best_move: bool=True) -> float:
+            use_null_move: bool = False,
+            use_killer_move: bool = False) -> float:
     """
     Minimax algorithm with alpha-beta pruning
     
@@ -385,130 +261,61 @@ def minimax(board: chess.Board,
     Returns:
     - float
     """
-    node_inc()
-    global use_null_move
-    global use_killer_move
-    global use_pvs
-    global use_transposition_table
-    #Transposition table
-    if use_transposition_table:
-        zobrist_key = chess.polyglot.zobrist_hash(board)
-        entry = tt.lookup(zobrist_key)
-        if not (entry is None):
-            #nếu depth đã search kém hơn không quá nhiều thì k search lại
-            if entry['depth'] +2 >= depth:
-                return entry['value']
-            else:
-                killer_moves[depth].add(entry['best_move'])
-
     if board.is_game_over():
-        evalue_inc()
         return evaluate_board(board.fen())
     if depth == 0:
         return quiescence_search(board, alpha, beta, quiescense_depth, maximizing_player)
-    
-    if use_moveorder:
-        legal_moves = sorted(list(board.legal_moves), key=lambda move: move_priority(move, board,killer_moves,depth), reverse=True)
-    else:
-        legal_moves = list(board.legal_moves)    
-        
-    best = None
-    if(use_pvs): 
-        first = True
+
+    legal_moves = list(board.legal_moves)
 
     if maximizing_player:
-        if (not use_pvs) and use_null_move:
-            #on nullmove branch killer search and quiescense turn off
-            null_move_score = null_move_search(board, depth, alpha, beta, killer_moves,tt,use_pvs)  
-            max_eval=null_move_score            
-        else:
-            max_eval=-math.inf
+        #on nullmove branch killer search and quiescense turn off
+        max_eval = null_move_search(board, depth, alpha, beta, killer_moves) if use_null_move else -math.inf
+        if use_killer_move:
+            temp = killer_move_search(board, depth, alpha, beta, killer_moves, maximizing_player, quiescense_depth, use_null_move);    
+            if temp>max_eval:
+                max_eval=temp    
 
         for move in legal_moves:
+            if use_killer_move and (move in killer_moves[depth] ):
+                continue
             board.push(move)
-            #pvs search
-            if(use_pvs):
-                if first:
-                    eval = minimax(board, depth - 1, alpha, beta, killer_moves, tt, False, quiescense_depth, allow_add_best_move)
-                    first=False
-                else:
-                    eval = pvs(board, depth - 1, alpha, alpha+1, killer_moves, tt, False)
-                    if(eval>alpha and eval<beta):
-                        eval=minimax(board, depth - 1, alpha, beta, killer_moves, tt, False, quiescense_depth,allow_add_best_move)
-
-            #normal minimax
-            else:
-                eval = minimax(board, depth - 1, alpha, beta, killer_moves, tt, False, quiescense_depth,allow_add_best_move)
-            
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves ,False, quiescense_depth, use_null_move,use_killer_move)
             board.pop()
-            if(eval>max_eval):
-                max_eval=eval
-                best=move
+            max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
-                prun_inc()
-                best=move                   
+                if use_killer_move:
+                    killer_moves[depth].add(move)
                 break
-        
-        #nếu đã nhường 1 nhưng đối thủ không tăng trạng thái đối phương lên được thì cắt tỉa(cần xem lại)
-        if (not use_pvs) and use_null_move:
-            if null_move_score == max_eval:
-                return -math.inf
-        #thêm best move vào set killer_move
-        if use_killer_move and allow_add_best_move:
-            killer_moves[depth].add(best)
-            if depth>2:
-                killer_moves[depth-2].clear()
-        #thêm các giá trị tính được vào transposition table 
-        if use_transposition_table:
-            tt.store(zobrist_key,max_eval,depth,best)
-
+            killer_moves[depth-2].clear()
         return max_eval
     else:
         min_eval = math.inf
+        if use_killer_move:
+            temp = killer_move_search(board, depth, alpha, beta, killer_moves, maximizing_player, quiescense_depth, use_null_move);    
+            if temp<min_eval:
+                min_eval=temp 
+
         for move in legal_moves:
+            if use_killer_move and move in killer_moves[depth]:
+                continue
             board.push(move)
-            #pvs search 
-            if(use_pvs):
-                if first:
-                    first=False
-                    eval =  minimax(board, depth - 1, alpha, beta, killer_moves, tt, True, quiescense_depth, allow_add_best_move)
-                else:
-                    eval = pvs(board, depth - 1, beta-1,beta, killer_moves, tt, True)
-                    if(eval>alpha and eval<beta):
-                        eval=minimax(board, depth - 1, alpha, beta, killer_moves, tt, True, quiescense_depth, allow_add_best_move)
-            #normal minimax
-            else:
-                eval = minimax(board, depth - 1, alpha, beta, killer_moves, tt, True, quiescense_depth, allow_add_best_move)
-            
+            eval = minimax(board, depth - 1, alpha, beta, killer_moves, True, quiescense_depth, use_null_move, use_killer_move)
             board.pop()
             min_eval = min(min_eval, eval)
-            if(min_eval<eval):
-                min_eval=eval
-                best=move
             beta = min(beta, eval)
             if beta <= alpha:
-                prun_inc()
-                best=move                   
+                if use_killer_move:
+                    killer_moves[depth].add(move)
                 break
-
-        if use_killer_move and allow_add_best_move:
-            killer_moves[depth].add(best)
-            if depth>2:
-                killer_moves[depth-2].clear()
-
-        if use_transposition_table:
-            tt.store(zobrist_key,min_eval,depth,best)
         return min_eval
 
 def find_best_move(fen: str,
                    depth: int,
                    quiescense_depth: int = 1,
-                   _use_null_move: bool = False,
-                   _use_killer_move: bool = True,
-                   _use_pvs:bool = True,
-                   _use_transposition_table:bool = True,
-                   _use_moveorder:bool = True) -> str:
+                   null_move: bool = False,
+                   use_killer_move: bool = False) -> str:
     """
     Find the best move using minimax algorithm
     
@@ -523,9 +330,6 @@ def find_best_move(fen: str,
     best_move = None
     best_value = -math.inf
     alpha, beta = -math.inf, math.inf
-    tt = TranspositionTable()  # Tạo một đối tượng TranspositionTable
-    #đặt các kỹ thuật sử dụng =True vào biến global
-    set_find_technique(_use_null_move,_use_killer_move,_use_pvs,_use_transposition_table,_use_moveorder,depth)
 
     killer_moves = [set() for _ in range(depth)]
     for move in board.legal_moves:
@@ -533,25 +337,13 @@ def find_best_move(fen: str,
             sub_list.clear()
 
         board.push(move)
-        board_value = minimax(board, depth - 1, best_value, beta, killer_moves, tt,False, quiescense_depth)
+        board_value = minimax(board, depth - 1, alpha, beta, killer_moves, False, quiescense_depth, null_move,use_killer_move)
         # các loại tham số có dùng quiescense, null_move các kiểu nên chuyển thành global var
         board.pop()
-        
+
         if board_value > best_value:
             best_value = board_value
             best_move = move
-
-    global evalue_time
-    global pruning_time
-    global number_node
-    print("evaluate time:")
-    print(evalue_time)
-    print("prun time:")
-    print(pruning_time)
-    print("max point")
-    print(best_value)
-    print("number node")
-    print(number_node)
 
     return best_move.uci() if best_move else None
 

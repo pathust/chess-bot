@@ -82,7 +82,7 @@ class Evaluation:
 
         penalty = 0
         is_white = colour_index == chess.WHITE
-        friendly_pawn = chess.PAWN if is_white else chess.PAWN
+        friendly_pawn = chess.PAWN
         king_square = board.king(colour_index)
         king_file = chess.square_file(king_square)
 
@@ -95,7 +95,8 @@ class Evaluation:
 
             for i in range(len(squares) // 2):
                 shield_square_index = squares[i]
-                if board.piece_at(shield_square_index) != friendly_pawn:
+                piece = board.piece_at(shield_square_index)
+                if piece is None or piece.piece_type != friendly_pawn or piece.color != colour_index:
                     penalty += self.king_pawn_shield_scores[i]
 
             penalty *= penalty
@@ -118,30 +119,37 @@ class Evaluation:
                         open_file_against_king_penalty += 15 if is_king_file else 10
 
         pawn_shield_weight = 1 - enemy_material.endgame_t
-        if len(board.queens) == 0:
+        if not any(board.pieces(chess.QUEEN, side) for side in [chess.WHITE, chess.BLACK]):
             pawn_shield_weight *= 0.6
 
         return int((-penalty - open_file_against_king_penalty) * pawn_shield_weight)
 
     def evaluate_pawns(self, colour_index: int, board: chess.Board) -> int:
-        pawns = [square for square in board.pieces(chess.PAWN, colour_index)]
-        opponent_pawns = [square for square in board.pieces(chess.PAWN, chess.WHITE if colour_index == chess.BLACK else chess.BLACK)]
-        friendly_pawns = [square for square in board.pieces(chess.PAWN, colour_index)]
+        # Fixed implementation to avoid KeyError
+        pawns = list(board.pieces(chess.PAWN, colour_index))
+        opponent_pawns = list(board.pieces(chess.PAWN, chess.WHITE if colour_index == chess.BLACK else chess.BLACK))
+        friendly_pawns = pawns  # For clarity
+        
         masks = self.get_passed_pawn_masks(colour_index, board)
         bonus = 0
         num_isolated_pawns = 0
 
         for square in pawns:
-            passed_mask = masks[square]
-            if (opponent_pawns & passed_mask) == 0:
-                rank = chess.square_rank(square)
-                num_squares_from_promotion = 7 - rank if colour_index == chess.WHITE else rank
-                bonus += self.passed_pawn_bonuses[num_squares_from_promotion]
+            # Check if this is a passed pawn (no enemy pawns that can block it)
+            if square in masks:
+                passed_mask = masks[square]
+                if not any(op_sq in passed_mask for op_sq in opponent_pawns):
+                    rank = chess.square_rank(square)
+                    num_squares_from_promotion = 7 - rank if colour_index == chess.WHITE else rank
+                    bonus += self.passed_pawn_bonuses[min(6, num_squares_from_promotion)]
 
-            if (friendly_pawns & self.get_adjacent_file_masks(chess.square_file(square))) == 0:
+            # Check if this is an isolated pawn (no friendly pawns on adjacent files)
+            square_file = chess.square_file(square)
+            adjacent_files = self.get_adjacent_file_masks(square_file)
+            if not any(fp_sq in adjacent_files for fp_sq in friendly_pawns):
                 num_isolated_pawns += 1
 
-        return bonus + self.isolated_pawn_penalty_by_count[num_isolated_pawns]
+        return bonus + self.isolated_pawn_penalty_by_count[min(8, num_isolated_pawns)]
 
     def mop_up_eval(self, is_white: bool, my_material, enemy_material, board: chess.Board) -> int:
         if (
@@ -178,33 +186,33 @@ class Evaluation:
         colour_index = chess.WHITE if is_white else chess.BLACK
         value += self.evaluate_piece_square_table(
             PieceSquareTable.rooks,
-            [square for square in board.pieces(chess.ROOK, colour_index)],
+            list(board.pieces(chess.ROOK, colour_index)),
             is_white
         )
         value += self.evaluate_piece_square_table(
             PieceSquareTable.knights,
-            [square for square in board.pieces(chess.KNIGHT, colour_index)],
+            list(board.pieces(chess.KNIGHT, colour_index)),
             is_white
         )
         value += self.evaluate_piece_square_table(
             PieceSquareTable.bishops,
-            [square for square in board.pieces(chess.BISHOP, colour_index)],
+            list(board.pieces(chess.BISHOP, colour_index)),
             is_white
         )
         value += self.evaluate_piece_square_table(
             PieceSquareTable.queens,
-            [square for square in board.pieces(chess.QUEEN, colour_index)],
+            list(board.pieces(chess.QUEEN, colour_index)),
             is_white
         )
 
         pawn_early = self.evaluate_piece_square_table(
             PieceSquareTable.pawns,
-            [square for square in board.pieces(chess.PAWN, colour_index)],
+            list(board.pieces(chess.PAWN, colour_index)),
             is_white
         )
         pawn_late = self.evaluate_piece_square_table(
             PieceSquareTable.pawns_end,
-            [square for square in board.pieces(chess.PAWN, colour_index)],
+            list(board.pieces(chess.PAWN, colour_index)),
             is_white
         )
         value += int(pawn_early * (1 - endgame_t))
@@ -232,16 +240,76 @@ class Evaluation:
         return value
 
     def get_material_info(self, colour_index: int, board: chess.Board):
-        material_info = MaterialInfo(0, 0, 0, 0, 0, 0, 0)
+        # Implement a proper material info calculation
+        opponent_index = chess.BLACK if colour_index == chess.WHITE else chess.WHITE
+        material_info = MaterialInfo(
+            num_pawns=len(board.pieces(chess.PAWN, colour_index)),
+            num_knights=len(board.pieces(chess.KNIGHT, colour_index)),
+            num_bishops=len(board.pieces(chess.BISHOP, colour_index)),
+            num_queens=len(board.pieces(chess.QUEEN, colour_index)),
+            num_rooks=len(board.pieces(chess.ROOK, colour_index)),
+            my_pawns=board.pieces(chess.PAWN, colour_index),
+            enemy_pawns=board.pieces(chess.PAWN, opponent_index)
+        )
+        
+        # Calculate endgame transition value
+        total_material = (material_info.num_rooks * self.rook_value +
+                         material_info.num_knights * self.knight_value +
+                         material_info.num_bishops * self.bishop_value +
+                         material_info.num_queens * self.queen_value)
+        
+        # Normalize the endgame transition based on total material
+        material_info.endgame_t = max(0, min(1, 1 - (total_material / self.endgame_material_start)))
+        
         return material_info
 
     def get_passed_pawn_masks(self, colour_index: int, board: chess.Board):
-        # Implement logic to generate passed pawn masks here
-        return {}
+        """Generate masks of squares that must be empty for a pawn to be 'passed'"""
+        masks = {}
+        is_white = colour_index == chess.WHITE
+        
+        # For each pawn, create a mask of squares in front of it
+        for square in board.pieces(chess.PAWN, colour_index):
+            file = chess.square_file(square)
+            rank = chess.square_rank(square)
+            target_mask = set()
+            
+            # Direction of pawn movement depends on color
+            direction = 1 if is_white else -1
+            
+            # Add squares directly in front of the pawn
+            current_rank = rank + direction
+            while 0 <= current_rank < 8:
+                target_mask.add(chess.square(file, current_rank))
+                current_rank += direction
+            
+            # Also add diagonal squares that could contain enemy pawns
+            for adjacent_file in [file-1, file+1]:
+                if 0 <= adjacent_file < 8:
+                    current_rank = rank + direction
+                    while 0 <= current_rank < 8:
+                        target_mask.add(chess.square(adjacent_file, current_rank))
+                        current_rank += direction
+            
+            masks[square] = target_mask
+            
+        return masks
 
     def get_adjacent_file_masks(self, file_index: int):
-        # Implement logic to get adjacent file masks here
-        return {}
+        """Generate a set of squares on adjacent files"""
+        adjacent_files = set()
+        
+        # Add squares on file to the left (if it exists)
+        if file_index > 0:
+            for rank in range(8):
+                adjacent_files.add(chess.square(file_index - 1, rank))
+                
+        # Add squares on file to the right (if it exists)
+        if file_index < 7:
+            for rank in range(8):
+                adjacent_files.add(chess.square(file_index + 1, rank))
+                
+        return adjacent_files
 
 class MaterialInfo:
     def __init__(self, num_pawns, num_knights, num_bishops, num_queens, num_rooks, my_pawns, enemy_pawns):
@@ -252,8 +320,10 @@ class MaterialInfo:
         self.num_rooks = num_rooks
         self.my_pawns = my_pawns
         self.enemy_pawns = enemy_pawns
-        self.endgame_t = 0  # endgame phase logic
-
+        self.endgame_t = 0  # Will be set later
+        self.pawns = my_pawns  # Add this field for compatibility
+        
+        # Calculate material score
         self.material_score = (self.num_pawns * Evaluation.pawn_value +
                                self.num_knights * Evaluation.knight_value +
                                self.num_bishops * Evaluation.bishop_value +

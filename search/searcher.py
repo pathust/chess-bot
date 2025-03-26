@@ -26,6 +26,11 @@ class Searcher:
         self.has_searched_at_least_one_move = False
         self.search_cancelled = False
         self.debug_info = ""
+        self.search_iteration_timer = time.time()
+        self.search_total_timer = time.time()
+        
+        # Initialize search_diagnostics
+        self.search_diagnostics = SearchDiagnostics()
 
         # References and initialization
         self.evaluation = Evaluation()
@@ -54,11 +59,13 @@ class Searcher:
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
 
+        print('initialized')
         # Search
         self.run_iterative_deepening_search()
-
+        print('finished search')
         # Finish up
-        if self.best_move.null_move:
+        print(self.best_move)
+        if self.best_move.null():
             # In the unlikely event no best move is found, take any legal move
             moves = list(self.board.legal_moves)
             if moves:
@@ -71,6 +78,7 @@ class Searcher:
 
     def run_iterative_deepening_search(self):
         for search_depth in range(1, 257):  # 256 is enough for any practical chess position
+            print(search_depth)
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
             self.search_iteration_timer = time.time()
@@ -97,7 +105,7 @@ class Searcher:
                 self.debug_info += f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
                 if self.is_mate_score(self.best_eval):
                     self.debug_info += f" Mate in ply: {self.num_ply_to_mate_from_score(self.best_eval)}"
-
+                print(f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval}")
                 self.best_eval_this_iteration = -float('inf')
                 self.best_move_this_iteration = chess.Move.null()
 
@@ -149,10 +157,11 @@ class Searcher:
         if tt_val != TranspositionTable.lookup_failed:
             if ply_from_root == 0:
                 self.best_move_this_iteration = self.transposition_table.try_get_stored_move()
-                self.best_eval_this_iteration = self.transposition_table.entries.get(
-                    self.transposition_table.index,
-                    {}
-                ).get("value", 0)
+                entry = self.transposition_table.entries.get(self.transposition_table.index)
+                if entry:
+                    self.best_eval_this_iteration = entry.value
+                else:
+                    self.best_eval_this_iteration = 0
             return tt_val
 
         # If at max depth, perform quiescence search
@@ -369,7 +378,7 @@ class Searcher:
 
     def format_move(self, move):
         """Format a move for display"""
-        if move.null_move:
+        if move.null():
             return "null"
         return move.uci()
 

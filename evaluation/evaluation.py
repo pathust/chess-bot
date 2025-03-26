@@ -1,6 +1,6 @@
 import chess
-from piece_square_table import PieceSquareTable
-from precomputed_evaluation_data import PrecomputedEvaluationData
+from evaluation.piece_square_table import PieceSquareTable
+from evaluation.precomputed_evaluation_data import PrecomputedEvaluationData
 
 class Evaluation:
     pawn_value = 100

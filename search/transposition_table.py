@@ -53,7 +53,7 @@ class TranspositionTable:
     def store_evaluation(self,
         depth: int,
         num_ply_searched: int,
-        eval: int,
+        score: int,
         eval_type: int,
         move: chess.Move
     ):
@@ -62,7 +62,7 @@ class TranspositionTable:
 
         entry = Entry(
             chess.polyglot.zobrist_hash(self.board),
-            self.correct_mate_score_for_storage(eval, num_ply_searched),
+            self.correct_mate_score_for_storage(score, num_ply_searched),
             depth,
             eval_type,
             move

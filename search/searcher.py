@@ -1,10 +1,9 @@
 import time
-from math import ceil, inf
-from typing import Optional, Callable
+from math import ceil
 import chess
-from move_ordering import MoveOrdering
-from repetition_table import RepetitionTable
-from transposition_table import TranspositionTable
+from search.move_ordering import MoveOrdering
+from search.repetition_table import RepetitionTable
+from search.transposition_table import TranspositionTable
 from evaluation.evaluation import Evaluation
 
 class Searcher:
@@ -18,45 +17,52 @@ class Searcher:
 
     def __init__(self, board: chess.Board):
         self.board = board
-        self.best_move_this_iteration = chess.Move.null()
-        self.best_eval_this_iteration = 0
+        self.current_depth = 0
         self.best_move = chess.Move.null()
         self.best_eval = 0
+        self.is_playing_white = False
+        self.best_move_this_iteration = chess.Move.null()
+        self.best_eval_this_iteration = 0
         self.has_searched_at_least_one_move = False
         self.search_cancelled = False
-        self.current_depth = 0
         self.debug_info = ""
 
-        # References
-        self.transposition_table = TranspositionTable(board, self.transposition_table_size_mb)
-        self.repetition_table = RepetitionTable()
+        # References and initialization
         self.evaluation = Evaluation()
+        self.transposition_table = TranspositionTable(board, self.transposition_table_size_mb)
+        self.move_orderer = MoveOrdering(self.transposition_table)
+        self.repetition_table = RepetitionTable()
 
-        # Initialization
-        self.run_depth_1_search()
-
-    def run_depth_1_search(self):
+        # Run a depth 1 search for JIT warm-up
         self.search(1, 0, self.negative_infinity, self.positive_infinity)
 
-    def start_search(self, on_search_complete: Optional[Callable] = None):
+    def start_search(self, on_search_complete=None):
+        # Initialize search
         self.best_eval_this_iteration = self.best_eval = 0
         self.best_move_this_iteration = self.best_move = chess.Move.null()
 
         self.is_playing_white = self.board.turn == chess.WHITE
+
+        self.move_orderer.clear_history()
         self.repetition_table.init(self.board)
 
+        # Initialize debug info
         self.current_depth = 0
         self.debug_info = "Starting search with FEN " + self.board.fen()
         self.search_cancelled = False
-
         self.search_diagnostics = SearchDiagnostics()
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
 
+        # Search
         self.run_iterative_deepening_search()
 
-        if self.best_move.is_null:
-            self.best_move = list(self.board.legal_moves)[0]  # Pick any legal move if no best move found
+        # Finish up
+        if self.best_move.null_move:
+            # In the unlikely event no best move is found, take any legal move
+            moves = list(self.board.legal_moves)
+            if moves:
+                self.best_move = moves[0]
 
         if on_search_complete:
             on_search_complete(self.best_move)
@@ -64,10 +70,11 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(1, 257):
+        for search_depth in range(1, 257):  # 256 is enough for any practical chess position
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
             self.search_iteration_timer = time.time()
+
 
             self.search(search_depth, 0, self.negative_infinity, self.positive_infinity)
 
@@ -79,6 +86,7 @@ class Searcher:
                     self.search_diagnostics.eval = self.best_eval
                     self.search_diagnostics.move_is_from_partial_search = True
                     self.debug_info += f"\nUsing partial search result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
+
                 self.debug_info += "\nSearch aborted"
                 break
             else:
@@ -87,8 +95,10 @@ class Searcher:
                 self.best_eval = self.best_eval_this_iteration
 
                 self.debug_info += f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
+                if self.is_mate_score(self.best_eval):
+                    self.debug_info += f" Mate in ply: {self.num_ply_to_mate_from_score(self.best_eval)}"
 
-                self.best_eval_this_iteration = -inf
+                self.best_eval_this_iteration = -float('inf')
                 self.best_move_this_iteration = chess.Move.null()
 
                 # Update diagnostics
@@ -96,112 +106,208 @@ class Searcher:
                 self.search_diagnostics.move = self.format_move(self.best_move)
                 self.search_diagnostics.eval = self.best_eval
 
-                if self.is_mate_score(self.best_eval):
-                    self.debug_info += f" Mate in ply: {self.num_ply_to_mate_from_score(self.best_eval)}"
-
-                # Exit search if found a mate within search depth.
-                if self.is_mate_score(self.best_eval) and self.num_ply_to_mate_from_score(self.best_eval) <= search_depth:
+                # Exit search if found a mate within search depth
+                if (self.is_mate_score(self.best_eval) and
+                    self.num_ply_to_mate_from_score(self.best_eval) <= search_depth
+                ):
                     self.debug_info += "\nExiting search due to mate found within search depth"
                     break
 
-    def search(self, ply_remaining, ply_from_root, alpha, beta, num_extensions=0, prev_move=None, prev_was_capture=False):
+    def search(self,
+               ply_remaining,
+               ply_from_root,
+               alpha,
+               beta,
+               num_extensions=0,
+               prev_move=None,
+               prev_was_capture=False
+    ):
         if self.search_cancelled:
             return 0
 
         if ply_from_root > 0:
-            if self.board.is_fifty_moves() >= 100 or self.repetition_table.contains(self.board.zobrist_key):
+            # Detect draw by three-fold repetition or fifty move rule
+            if (
+                self.board.is_fifty_moves() or
+                self.repetition_table.contains(chess.polyglot.zobrist_hash(self.board))
+            ):
                 return 0
 
+            # Skip positions where we already know a shorter mating sequence
             alpha = max(alpha, -self.immediate_mate_score + ply_from_root)
             beta = min(beta, self.immediate_mate_score - ply_from_root)
             if alpha >= beta:
                 return alpha
 
-        tt_val = self.transposition_table.lookup_evaluation(ply_remaining, ply_from_root, alpha, beta)
+        # Check transposition table
+        tt_val = self.transposition_table.lookup_evaluation(
+            ply_remaining,
+            ply_from_root,
+            alpha,
+            beta
+        )
         if tt_val != TranspositionTable.lookup_failed:
             if ply_from_root == 0:
                 self.best_move_this_iteration = self.transposition_table.try_get_stored_move()
-                self.best_eval_this_iteration = self.transposition_table.entries[self.transposition_table.index].value
+                self.best_eval_this_iteration = self.transposition_table.entries.get(
+                    self.transposition_table.index,
+                    {}
+                ).get("value", 0)
             return tt_val
 
+        # If at max depth, perform quiescence search
         if ply_remaining == 0:
-            return self.quiescence_search(alpha, beta)
+            eval_score = self.quiescence_search(alpha, beta)
+            return eval_score
 
-        moves = list(self.board.legal_moves)
-        prev_best_move = self.best_move if ply_from_root == 0 else self.transposition_table.try_get_stored_move()
+        # Generate and order moves
+        legal_moves = list(self.board.legal_moves)
+        prev_best_move = (
+            self.best_move
+            if ply_from_root == 0 else
+            self.transposition_table.try_get_stored_move()
+        )
 
-        # Sort moves
-        moves.sort(key=lambda move: self.evaluate_move(move, alpha, beta))
+        # Order moves
+        opponent_attack_map = chess.SquareSet()
+        opponent_pawn_attack_map = chess.SquareSet()
+        self.move_orderer.order_moves(
+            prev_best_move,
+            self.board, legal_moves,
+            opponent_attack_map,
+            opponent_pawn_attack_map,
+            False,
+            ply_from_root
+        )
 
-        if len(moves) == 0:
+        # Check for checkmate or stalemate
+        if not legal_moves:
             if self.board.is_check():
+                # Checkmate
                 mate_score = self.immediate_mate_score - ply_from_root
                 return -mate_score
             else:
+                # Stalemate
                 return 0
 
-        if ply_from_root > 0:
-            was_pawn_move = self.board.piece_type(prev_move.target_square) == chess.PAWN
-            self.repetition_table.push(self.board.zobrist_key, prev_was_capture or was_pawn_move)
+        if ply_from_root > 0 and prev_move:
+            # Update repetition table
+            was_pawn_move = (
+                self.board.piece_at(prev_move.to_square) and
+                self.board.piece_at(prev_move.to_square).piece_type == chess.PAWN
+            )
+            self.repetition_table.push(
+                chess.polyglot.zobrist_hash(self.board),
+                prev_was_capture or was_pawn_move
+            )
 
         evaluation_bound = TranspositionTable.upper_bound
         best_move_in_this_position = chess.Move.null()
 
-        for i, move in enumerate(moves):
-            captured_piece_type = self.board.piece_type(move.target_square)
-            is_capture = captured_piece_type != chess.Piece.NONE
+        for i, move in enumerate(legal_moves):
+            # Get move information
+            captured_piece = self.board.piece_at(move.to_square)
+            is_capture = captured_piece is not None
+
+            # Make the move
             self.board.push(move)
 
+            # Check for extensions
             extension = 0
             if num_extensions < self.max_extensions:
-                moved_piece_type = self.board.piece_type(move.target_square)
-                target_rank = chess.square_rank(move.target_square)
-                if self.board.is_check():
-                    extension = 1
-                elif moved_piece_type == chess.PAWN and (target_rank == 1 or target_rank == 6):
-                    extension = 1
+                moved_piece = self.board.piece_at(move.to_square)
+                if moved_piece:
+                    target_rank = chess.square_rank(move.to_square)
+                    if self.board.is_check():
+                        extension = 1
+                    elif (moved_piece.piece_type == chess.PAWN and
+                          target_rank in [1, 6]
+                    ):
+                        extension = 1
 
+            # Decide whether to do a full search or reduced depth search
             needs_full_search = True
-            eval = 0
+            eval_score = 0
+
+            # Reduce depth for later moves in the move list
             if extension == 0 and ply_remaining >= 3 and i >= 3 and not is_capture:
                 reduce_depth = 1
-                eval = -self.search(ply_remaining - 1 - reduce_depth, ply_from_root + 1, -alpha - 1, -alpha, num_extensions, move, is_capture)
-                needs_full_search = eval > alpha
+                eval_score = -self.search(
+                    ply_remaining - 1 - reduce_depth,
+                    ply_from_root + 1,
+                    -alpha - 1,
+                    -alpha,
+                    num_extensions,
+                    move,
+                    is_capture
+                )
+                needs_full_search = eval_score > alpha
 
+            # Perform full-depth search if needed
             if needs_full_search:
-                eval = -self.search(ply_remaining - 1 + extension, ply_from_root + 1, -beta, -alpha, num_extensions + extension, move, is_capture)
+                eval_score = -self.search(
+                    ply_remaining - 1 + extension,
+                    ply_from_root + 1,
+                    -beta,
+                    -alpha,
+                    num_extensions + extension,
+                    move,
+                    is_capture
+                )
 
+            # Unmake move
             self.board.pop()
 
             if self.search_cancelled:
                 return 0
 
-            if eval >= beta:
-                self.transposition_table.store_evaluation(ply_remaining, ply_from_root, beta, TranspositionTable.lower_bound, move)
+            # Beta cutoff (move was too good)
+            if eval_score >= beta:
+                # Store in transposition table
+                self.transposition_table.store_evaluation(
+                    ply_remaining,
+                    ply_from_root,
+                    beta,
+                    TranspositionTable.lower_bound,
+                    move
+                )
+
+                # Update killer moves and history heuristic
                 if not is_capture:
                     if ply_from_root < MoveOrdering.max_killer_move_ply:
                         self.move_orderer.killer_moves[ply_from_root].add(move)
                     history_score = ply_remaining * ply_remaining
-                    self.move_orderer.history[self.board.move_colour_index, move.from_square, move.target_square] += history_score
+                    color_index = int(self.board.turn)
+                    self.move_orderer.history[color_index][move.from_square][move.to_square] += history_score
+
                 if ply_from_root > 0:
                     self.repetition_table.try_pop()
 
                 self.search_diagnostics.num_cutoffs += 1
                 return beta
 
-            if eval > alpha:
+            # Found a new best move in this position
+            if eval_score > alpha:
                 evaluation_bound = TranspositionTable.exact
                 best_move_in_this_position = move
-                alpha = eval
+                alpha = eval_score
+
                 if ply_from_root == 0:
                     self.best_move_this_iteration = move
-                    self.best_eval_this_iteration = eval
+                    self.best_eval_this_iteration = eval_score
                     self.has_searched_at_least_one_move = True
 
         if ply_from_root > 0:
             self.repetition_table.try_pop()
 
-        self.transposition_table.store_evaluation(ply_remaining, ply_from_root, alpha, evaluation_bound, best_move_in_this_position)
+        # Store position in transposition table
+        self.transposition_table.store_evaluation(
+            ply_remaining,
+            ply_from_root,
+            alpha,
+            evaluation_bound,
+            best_move_in_this_position
+        )
 
         return alpha
 
@@ -209,59 +315,116 @@ class Searcher:
         if self.search_cancelled:
             return 0
 
-        eval = self.evaluation.evaluate(self.board)
+        # Stand-pat evaluation
+        eval_score = self.evaluation.evaluate(self.board)
         self.search_diagnostics.num_positions_evaluated += 1
-        if eval >= beta:
+        
+        if eval_score >= beta:
             self.search_diagnostics.num_cutoffs += 1
             return beta
-        if eval > alpha:
-            alpha = eval
 
-        moves = list(self.board.legal_moves)
+        if eval_score > alpha:
+            alpha = eval_score
+
+        # Generate capture moves only
+        moves = [move for move in self.board.legal_moves if self.board.is_capture(move)]
+
+        # Order captures
+        moves.sort(key=lambda move: self.score_capture(move), reverse=True)
+
         for move in moves:
             self.board.push(move)
-            eval = -self.quiescence_search(-beta, -alpha)
+            eval_score = -self.quiescence_search(-beta, -alpha)
             self.board.pop()
 
-            if eval >= beta:
+            if eval_score >= beta:
                 self.search_diagnostics.num_cutoffs += 1
                 return beta
-            if eval > alpha:
-                alpha = eval
+
+            if eval_score > alpha:
+                alpha = eval_score
 
         return alpha
 
-    def is_mate_score(self, score):
-        return abs(score) > self.immediate_mate_score
+    def score_capture(self, move):
+        """Score a capture move for move ordering in quiescence search"""
+        victim_value = self.get_piece_value(self.board.piece_at(move.to_square))
+        aggressor_value = self.get_piece_value(self.board.piece_at(move.from_square))
+        return victim_value - aggressor_value/10  # MVV-LVA
 
-    def num_ply_to_mate_from_score(self, score):
-        return self.immediate_mate_score - abs(score)
+    def get_piece_value(self, piece):
+        """Get the value of a piece for move ordering"""
+        if piece is None:
+            return 0
+
+        values = {
+            chess.PAWN: 100,
+            chess.KNIGHT: 300,
+            chess.BISHOP: 320,
+            chess.ROOK: 500,
+            chess.QUEEN: 900,
+            chess.KING: 10000
+        }
+        return values.get(piece.piece_type, 0)
+
+    def format_move(self, move):
+        """Format a move for display"""
+        if move.null_move:
+            return "null"
+        return move.uci()
+
+    @staticmethod
+    def is_mate_score(score):
+        """Check if a score indicates a mate"""
+        if score == -float('inf'):
+            return False
+        return abs(score) > Searcher.immediate_mate_score - 1000
+
+    @staticmethod
+    def num_ply_to_mate_from_score(score):
+        """Calculate the number of ply to mate from a mate score"""
+        return Searcher.immediate_mate_score - abs(score)
 
     def announce_mate(self):
+        """Announce mate if found"""
         if self.is_mate_score(self.best_eval_this_iteration):
             num_ply_to_mate = self.num_ply_to_mate_from_score(self.best_eval_this_iteration)
             num_moves_to_mate = ceil(num_ply_to_mate / 2)
-            side_with_mate = "Black" if self.best_eval_this_iteration * (1 if self.board.turn == chess.WHITE else -1) < 0 else "White"
-            return f"{side_with_mate} can mate in {num_moves_to_mate} move{('s' if num_moves_to_mate > 1 else '')}"
+            side_with_mate = "Black" if (self.best_eval_this_iteration * (1 if self.board.turn == chess.WHITE else -1) < 0) else "White"
+            return f"{side_with_mate} can mate in {num_moves_to_mate} move{'s' if num_moves_to_mate > 1 else ''}"
         return "No mate found"
 
+    def get_search_result(self):
+        """Return the best move and evaluation"""
+        return (self.best_move, self.best_eval)
+
+    def end_search(self):
+        """Cancel the search"""
+        self.search_cancelled = True
+
     def clear_for_new_position(self):
+        """Clear search data for a new position"""
         self.transposition_table.clear()
         self.move_orderer.clear_killers()
 
     def get_transposition_table(self):
+        """Return the transposition table"""
         return self.transposition_table
 
+
 class SearchDiagnostics:
+    """Class to hold search statistics and diagnostics"""
     def __init__(self):
         self.num_completed_iterations = 0
         self.num_positions_evaluated = 0
         self.num_cutoffs = 0
+
         self.move_val = ""
         self.move = ""
         self.eval = 0
         self.move_is_from_partial_search = False
         self.num_q_checks = 0
         self.num_q_mates = 0
+
         self.is_book = False
         self.max_extension_reached_in_search = 0

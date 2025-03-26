@@ -194,7 +194,7 @@ class GameOverPopup(QDialog):
             QDialog {
                 background-color: white;
                 border: 3px solid #4CAF50;
-                border-radius: None;
+                border-radius: 30px;
             }
         """)
         
@@ -205,13 +205,13 @@ class GameOverPopup(QDialog):
             message = custom_message
             if "AI 1" in message:
                 color = "#4CAF50"
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #4CAF50}")
+                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #4CAF50; border-radius: 30px; }")
             elif "AI 2" in message:
                 color = "#F44336"
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #F44336}")
+                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #F44336; border-radius: 30px; }")
             else:
                 color = "#2196F3"
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #2196F3}")
+                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #2196F3; border-radius: 30px; }")
         else:
             if result == '1-0':
                 message = "🏆 Player (White) Wins! 🏆"

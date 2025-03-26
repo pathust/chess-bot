@@ -221,8 +221,8 @@ class ChessBoard(QMainWindow):
         self.main_splitter.setSizes([700, 300])
         
         # Hide AI control panel in Human vs AI mode
-        if self.mode == "human_ai":
-            self.control_panel.hide()
+        # if self.mode == "human_ai":
+        #     self.control_panel.hide()
         
         # Set initial status
         if self.mode == "human_ai":
@@ -536,12 +536,30 @@ class ChessBoard(QMainWindow):
                 
         return valid_moves, castling_moves
 
+    # Modified part of the update_board method in ui/board.py
     def update_board(self):
         """Update the visual representation of the chess board"""
 
         selected = chess.parse_square(self.selected_square) if self.selected_square else None
         valid_destinations = [move.to_square for move in self.valid_moves]
         castling_destinations = [move.to_square for move in self.castling_moves]
+        
+        # Check if either king is in check
+        white_king_in_check = self.board.is_check() and self.board.turn == chess.WHITE
+        black_king_in_check = self.board.is_check() and self.board.turn == chess.BLACK
+        
+        # Find king positions if needed
+        white_king_square = None
+        black_king_square = None
+        
+        if white_king_in_check or black_king_in_check:
+            for square in chess.SQUARES:
+                piece = self.board.piece_at(square)
+                if piece and piece.piece_type == chess.KING:
+                    if piece.color == chess.WHITE:
+                        white_king_square = square
+                    else:
+                        black_king_square = square
 
         for i in range(8):
             for j in range(8):
@@ -554,6 +572,7 @@ class ChessBoard(QMainWindow):
                 square_widget.is_last_move = False
                 square_widget.is_valid_move = False
                 square_widget.is_castling_move = False
+                square_widget.is_checked = False  # Reset check state
                 
                 # Set states based on game state
                 if selected == square:
@@ -564,6 +583,11 @@ class ChessBoard(QMainWindow):
                     square_widget.is_valid_move = True
                 if square in castling_destinations:
                     square_widget.is_castling_move = True
+                    
+                # Mark king as checked if applicable
+                if (white_king_in_check and square == white_king_square) or \
+                (black_king_in_check and square == black_king_square):
+                    square_widget.is_checked = True
                     
                 # Update the square appearance
                 square_widget.update_appearance()
@@ -580,6 +604,7 @@ class ChessBoard(QMainWindow):
                     """)
                 else:
                     square_widget.setText("")
+
 
         # Check for game over
         if self.board.is_game_over():

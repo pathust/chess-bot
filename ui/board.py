@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QPoint, QTimer
 import chess
 import sys
+import traceback
 
 from ui.components.board_components import ChessSquare, ThinkingIndicator
 from ui.components.history import MoveHistoryWidget
@@ -12,6 +13,11 @@ from ui.components.sidebar import AIControlPanel
 from ui.components.popups import PawnPromotionDialog, GameOverPopup
 from ui.components.animations import AnimatedLabel
 from ui.workers import AIWorker
+
+def exception_hook(exctype, value, tb):
+    print(f"Ngoại lệ không được xử lý: {exctype}")
+    print(f"Giá trị: {value}")
+    traceback.print_tb(tb)
 
 class ChessBoard(QMainWindow):
     def __init__(self, mode="human_ai", parent_app=None):
@@ -237,6 +243,8 @@ class ChessBoard(QMainWindow):
         
         # Initialize the board
         self.update_board()
+
+        sys.excepthook = exception_hook
     
     def initialize_piece_symbols(self):
         """Create enhanced chess piece symbols with better visibility and style"""
@@ -653,14 +661,25 @@ class ChessBoard(QMainWindow):
                     is_promotion = (piece and piece.piece_type == chess.PAWN and
                                 (chess.square_rank(square) == 0 or chess.square_rank(square) == 7))
 
+                    # Trong phương thức player_move
                     if is_promotion:
-                        dialog = PawnPromotionDialog(self)
-                        if dialog.exec_() == QDialog.Accepted:
-                            promotion_piece = dialog.get_choice()
-                            move = chess.Move(from_square, square, 
-                                            promotion=chess.Piece.from_symbol(promotion_piece.upper()).piece_type)
-                        else:
-                            return
+                        try:
+                            dialog = PawnPromotionDialog(self)
+                            if dialog.exec_() == QDialog.Accepted:
+                                promotion_piece = dialog.get_choice()
+                                move = chess.Move(from_square, square, 
+                                                promotion=chess.Piece.from_symbol(promotion_piece.upper()).piece_type)
+                            else:
+                                # Người dùng đã hủy bỏ, đừng thực hiện nước đi
+                                self.selected_square = None
+                                self.valid_moves = []
+                                self.castling_moves = []
+                                self.update_board()
+                                return
+                        except Exception as e:
+                            print(f"Lỗi trong quá trình phong cấp: {str(e)}")
+                            # Mặc định phong cấp thành Hậu nếu có lỗi
+                            move = chess.Move(from_square, square, promotion=chess.QUEEN)
                     
                     # Check if move is castling
                     is_castling = piece and piece.piece_type == chess.KING and abs(move.from_square % 8 - move.to_square % 8) > 1

@@ -166,13 +166,18 @@ class PawnPromotionDialog(QDialog):
         self.setLayout(layout)
 
     def get_choice(self):
+
         piece_map = {
             "Queen": "q",
             "Rook": "r",
             "Bishop": "b",
             "Knight": "n"
         }
-        return piece_map[self.promotion_choice.currentText()]
+        # Bảo đảm rằng combo box có một lựa chọn
+        selection = self.promotion_choice.currentText()
+        if not selection:
+            return "q"  # Mặc định là Hậu nếu không có lựa chọn
+        return piece_map.get(selection, "q")
 
 class GameOverPopup(QDialog):
     play_again_signal = pyqtSignal()

@@ -26,11 +26,17 @@ class ChessApp(QApplication):
     
     def show_start_screen(self):
         """Show the start screen to select game mode"""
-        # Close any existing chess window
+        # Close any existing chess window and ensure proper cleanup
         if self.chess_window:
+            # Explicitly clean up any popup
+            if hasattr(self.chess_window, 'popup') and self.chess_window.popup:
+                self.chess_window.popup.close()
+                self.chess_window.popup = None
+                
             self.chess_window.close()
+            self.chess_window.deleteLater()  # Ensure Qt properly destroys the window
             self.chess_window = None
-            
+                
         start_screen = StartScreen()
         if start_screen.exec_() == QDialog.Accepted:
             mode = start_screen.get_mode()

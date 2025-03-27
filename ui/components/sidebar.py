@@ -23,9 +23,9 @@ class AIControlPanel(QScrollArea):
         self.setWidget(inner_widget)
         
         # Create main layout with adaptive spacing
-        main_layout = QVBoxLayout(inner_widget)
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout = QVBoxLayout(inner_widget)
+        self.main_layout.setSpacing(10)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
         
         # Title header
         title = QLabel("AI Controls")
@@ -38,7 +38,7 @@ class AIControlPanel(QScrollArea):
             background-color: #34495e;  /* Slightly lighter than panel for contrast */
             border-radius: 6px;
         """)
-        main_layout.addWidget(title)
+        self.main_layout.addWidget(title)
                 
         # Create a responsive layout that can adapt to window width
         responsive_container = QWidget()
@@ -114,7 +114,7 @@ class AIControlPanel(QScrollArea):
         responsive_layout.addWidget(slider_container, 1)
         
         # Add responsive container to main layout
-        main_layout.addWidget(responsive_container)
+        self.main_layout.addWidget(responsive_container)
         
         # Set resize behavior to adapt to parent size
         responsive_layout.setStretch(0, 1)

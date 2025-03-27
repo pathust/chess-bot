@@ -166,13 +166,18 @@ class PawnPromotionDialog(QDialog):
         self.setLayout(layout)
 
     def get_choice(self):
+
         piece_map = {
             "Queen": "q",
             "Rook": "r",
             "Bishop": "b",
             "Knight": "n"
         }
-        return piece_map[self.promotion_choice.currentText()]
+        # Bảo đảm rằng combo box có một lựa chọn
+        selection = self.promotion_choice.currentText()
+        if not selection:
+            return "q"  # Mặc định là Hậu nếu không có lựa chọn
+        return piece_map.get(selection, "q")
 
 class GameOverPopup(QDialog):
     play_again_signal = pyqtSignal()
@@ -189,7 +194,7 @@ class GameOverPopup(QDialog):
             QDialog {
                 background-color: white;
                 border: 3px solid #4CAF50;
-                border-radius: 15px;
+                border-radius: 30px;
             }
         """)
         
@@ -200,13 +205,13 @@ class GameOverPopup(QDialog):
             message = custom_message
             if "AI 1" in message:
                 color = "#4CAF50"
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #4CAF50; border-radius: 15px; }")
+                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #4CAF50; border-radius: 30px; }")
             elif "AI 2" in message:
                 color = "#F44336"
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #F44336; border-radius: 15px; }")
+                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #F44336; border-radius: 30px; }")
             else:
                 color = "#2196F3"
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #2196F3; border-radius: 15px; }")
+                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #2196F3; border-radius: 30px; }")
         else:
             if result == '1-0':
                 message = "🏆 Player (White) Wins! 🏆"
@@ -306,3 +311,14 @@ class GameOverPopup(QDialog):
     def return_home(self):
         self.return_home_signal.emit()
         self.accept()
+        self.close()  # Force close the dialog
+
+    def closeEvent(self, event):
+        """Override to ensure proper cleanup when the dialog is closed"""
+        # Disconnect all signals to prevent memory leaks
+        try:
+            self.play_again_signal.disconnect()
+            self.return_home_signal.disconnect()
+        except Exception:
+            pass  # It's okay if they're not connected
+        super().closeEvent(event)

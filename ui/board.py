@@ -1,10 +1,11 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QDialog,
     QSplitter, QFrame
 )
 from PyQt5.QtCore import Qt, QPoint, QTimer
 import chess
 import sys
+import traceback
 
 from ui.components.board_components import ChessSquare, ThinkingIndicator
 from ui.components.history import MoveHistoryWidget
@@ -13,10 +14,16 @@ from ui.components.popups import PawnPromotionDialog, GameOverPopup
 from ui.components.animations import AnimatedLabel
 from ui.workers import AIWorker
 
+def exception_hook(exctype, value, tb):
+    print(f"Ngoại lệ không được xử lý: {exctype}")
+    print(f"Giá trị: {value}")
+    traceback.print_tb(tb)
+
 class ChessBoard(QMainWindow):
     def __init__(self, mode="human_ai", parent_app=None):
         super().__init__()
         
+        self.popup = None
         self.mode = mode
         self.parent_app = parent_app
         
@@ -214,8 +221,8 @@ class ChessBoard(QMainWindow):
         self.main_splitter.setSizes([700, 300])
         
         # Hide AI control panel in Human vs AI mode
-        if self.mode == "human_ai":
-            self.control_panel.hide()
+        # if self.mode == "human_ai":
+        #     self.control_panel.hide()
         
         # Set initial status
         if self.mode == "human_ai":
@@ -236,6 +243,8 @@ class ChessBoard(QMainWindow):
         
         # Initialize the board
         self.update_board()
+
+        sys.excepthook = exception_hook
     
     def initialize_piece_symbols(self):
         """Create enhanced chess piece symbols with better visibility and style"""
@@ -263,6 +272,12 @@ class ChessBoard(QMainWindow):
             self.ai_worker.terminate()
             self.ai_worker = None
             self.ai_computation_active = False
+            
+        # Properly clean up the popup reference
+        if hasattr(self, 'popup') and self.popup:
+            self.popup.close()
+            self.popup.deleteLater()  # Ensure Qt properly destroys the dialog
+            self.popup = None
             
         self.close()
         if self.parent_app:
@@ -342,6 +357,10 @@ class ChessBoard(QMainWindow):
         self.last_move_to = None
         self.move_history.clear_history()
         self.update_board()
+
+        if hasattr(self, 'popup') and self.popup:
+            self.popup.close()
+            self.popup = None
     
     def animate_piece_movement(self, from_pos, to_pos, piece_symbol, piece_color, capture=False, callback=None):
         """Animate a piece moving from one square to another"""
@@ -517,12 +536,30 @@ class ChessBoard(QMainWindow):
                 
         return valid_moves, castling_moves
 
+    # Modified part of the update_board method in ui/board.py
     def update_board(self):
         """Update the visual representation of the chess board"""
 
         selected = chess.parse_square(self.selected_square) if self.selected_square else None
         valid_destinations = [move.to_square for move in self.valid_moves]
         castling_destinations = [move.to_square for move in self.castling_moves]
+        
+        # Check if either king is in check
+        white_king_in_check = self.board.is_check() and self.board.turn == chess.WHITE
+        black_king_in_check = self.board.is_check() and self.board.turn == chess.BLACK
+        
+        # Find king positions if needed
+        white_king_square = None
+        black_king_square = None
+        
+        if white_king_in_check or black_king_in_check:
+            for square in chess.SQUARES:
+                piece = self.board.piece_at(square)
+                if piece and piece.piece_type == chess.KING:
+                    if piece.color == chess.WHITE:
+                        white_king_square = square
+                    else:
+                        black_king_square = square
 
         for i in range(8):
             for j in range(8):
@@ -535,6 +572,7 @@ class ChessBoard(QMainWindow):
                 square_widget.is_last_move = False
                 square_widget.is_valid_move = False
                 square_widget.is_castling_move = False
+                square_widget.is_checked = False  # Reset check state
                 
                 # Set states based on game state
                 if selected == square:
@@ -545,6 +583,11 @@ class ChessBoard(QMainWindow):
                     square_widget.is_valid_move = True
                 if square in castling_destinations:
                     square_widget.is_castling_move = True
+                    
+                # Mark king as checked if applicable
+                if (white_king_in_check and square == white_king_square) or \
+                (black_king_in_check and square == black_king_square):
+                    square_widget.is_checked = True
                     
                 # Update the square appearance
                 square_widget.update_appearance()
@@ -561,6 +604,7 @@ class ChessBoard(QMainWindow):
                     """)
                 else:
                     square_widget.setText("")
+
 
         # Check for game over
         if self.board.is_game_over():
@@ -642,14 +686,25 @@ class ChessBoard(QMainWindow):
                     is_promotion = (piece and piece.piece_type == chess.PAWN and
                                 (chess.square_rank(square) == 0 or chess.square_rank(square) == 7))
 
+                    # Trong phương thức player_move
                     if is_promotion:
-                        dialog = PawnPromotionDialog(self)
-                        if dialog.exec_() == QDialog.Accepted:
-                            promotion_piece = dialog.get_choice()
-                            move = chess.Move(from_square, square, 
-                                            promotion=chess.Piece.from_symbol(promotion_piece.upper()).piece_type)
-                        else:
-                            return
+                        try:
+                            dialog = PawnPromotionDialog(self)
+                            if dialog.exec_() == QDialog.Accepted:
+                                promotion_piece = dialog.get_choice()
+                                move = chess.Move(from_square, square, 
+                                                promotion=chess.Piece.from_symbol(promotion_piece.upper()).piece_type)
+                            else:
+                                # Người dùng đã hủy bỏ, đừng thực hiện nước đi
+                                self.selected_square = None
+                                self.valid_moves = []
+                                self.castling_moves = []
+                                self.update_board()
+                                return
+                        except Exception as e:
+                            print(f"Lỗi trong quá trình phong cấp: {str(e)}")
+                            # Mặc định phong cấp thành Hậu nếu có lỗi
+                            move = chess.Move(from_square, square, promotion=chess.QUEEN)
                     
                     # Check if move is castling
                     is_castling = piece and piece.piece_type == chess.KING and abs(move.from_square % 8 - move.to_square % 8) > 1
@@ -824,6 +879,11 @@ class ChessBoard(QMainWindow):
 
     def show_game_over_popup(self):
         """Show the game over popup with appropriate message and options"""
+        # Delete any existing popup first
+        if self.popup:
+            self.popup.close()
+            self.popup = None
+            
         result = self.board.result()
         
         if self.mode == "human_ai":

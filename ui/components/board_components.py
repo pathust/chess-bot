@@ -1,5 +1,7 @@
+# ui/components/board_components.py
 from PyQt5.QtWidgets import QLabel, QGraphicsOpacityEffect
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QPainter, QColor, QPen, QBrush
 
 class ChessSquare(QLabel):
     """Enhanced chess square widget with hover and selection effects"""
@@ -19,25 +21,64 @@ class ChessSquare(QLabel):
         self.is_valid_move = False
         self.is_castling_move = False
         self.is_selected = False
+        self.is_checked = False  # For check highlighting
+        self.hover_effect = None  # Store reference to the hover effect
         
     def enterEvent(self, event):
         """Highlight square on mouse hover"""
         if not self.is_selected and not self.is_last_move:
-            effect = QGraphicsOpacityEffect(self)
-            effect.setOpacity(0.8)
-            self.setGraphicsEffect(effect)
+            # Create a new effect only if needed
+            if not self.hover_effect:
+                self.hover_effect = QGraphicsOpacityEffect(self)
+                self.hover_effect.setOpacity(0.8)
+            self.setGraphicsEffect(self.hover_effect)
+            self.is_highlighted = True
         super().enterEvent(event)
         
     def leaveEvent(self, event):
         """Remove highlight on mouse leave"""
-        if not self.is_selected and not self.is_last_move:
+        if self.is_highlighted:
             self.setGraphicsEffect(None)
+            self.is_highlighted = False
         super().leaveEvent(event)
     
     def mousePressEvent(self, event):
         """Handle mouse click on square"""
+        # Ensure no highlight effect remains after clicking
+        if self.is_highlighted:
+            self.setGraphicsEffect(None)
+            self.is_highlighted = False
         self.clicked.emit(self.row, self.col)
         super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        """Custom painting for the square to include circular indicators"""
+        super().paintEvent(event)
+        
+        # Draw indicators for valid moves, castling, and check
+        if self.is_valid_move or self.is_castling_move or self.is_checked:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            # Draw circular indicators for valid moves
+            if self.is_valid_move:
+                painter.setPen(QPen(QColor("#32CD32"), 2))  # Green outline
+                painter.setBrush(QBrush(QColor(50, 205, 50, 120)))  # Semi-transparent green fill
+                painter.drawEllipse(20, 20, 20, 20)  # Adjust size as needed
+            
+            # Draw different indicator for castling
+            elif self.is_castling_move:
+                painter.setPen(QPen(QColor("#FFA500"), 2))  # Orange outline
+                painter.setBrush(QBrush(QColor(255, 165, 0, 120)))  # Semi-transparent orange fill
+                painter.drawEllipse(20, 20, 20, 20)  # Adjust size as needed
+            
+            # Draw red highlight for check
+            if self.is_checked:
+                painter.setPen(QPen(QColor("#FF0000"), 3))  # Red outline
+                painter.setBrush(QBrush(QColor(255, 0, 0, 40)))  # Very transparent red fill
+                painter.drawRect(2, 2, self.width()-4, self.height()-4)  # Cover almost the whole square
+            
+            painter.end()
         
     def update_appearance(self):
         """Update the square's appearance based on its state"""
@@ -47,12 +88,17 @@ class ChessSquare(QLabel):
             base_color = "#ffff99"  # Yellow for selected piece
         elif self.is_last_move:
             base_color = "#ffe066"  # Soft yellow for last move
-        elif self.is_castling_move:
-            base_color = "#ff9966"  # Orange for castling moves
-        elif self.is_valid_move:
-            base_color = "#90ee90"  # Light green for valid moves
             
+        # Reset any highlight effect if state changed
+        if (self.is_selected or self.is_last_move) and self.is_highlighted:
+            self.setGraphicsEffect(None)
+            self.is_highlighted = False
+            
+        # Set the base color of the square
         self.setStyleSheet(f"background-color: {base_color}; border: 1px solid black;")
+        
+        # Trigger a repaint for the indicators
+        self.update()
 
 class ThinkingIndicator(QLabel):
     """Visual indicator for AI thinking state with improved visibility"""
@@ -77,7 +123,7 @@ class ThinkingIndicator(QLabel):
         
     def start_thinking(self, ai_name):
         """Start the thinking animation"""
-        self.base_text = f"{ai_name} thinking"
+        self.base_text = f"{ai_name} is thinking"
         self.dots = 0
         self.setText(f"{self.base_text}...")
         self.show()

@@ -1,4 +1,3 @@
-# ui/components/board_components.py
 from PyQt5.QtWidgets import QLabel, QGraphicsOpacityEffect
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush
@@ -26,28 +25,36 @@ class ChessSquare(QLabel):
         
     def enterEvent(self, event):
         """Highlight square on mouse hover"""
-        if not self.is_selected and not self.is_last_move:
-            # Create a new effect only if needed
-            if not self.hover_effect:
-                self.hover_effect = QGraphicsOpacityEffect(self)
-                self.hover_effect.setOpacity(0.8)
-            self.setGraphicsEffect(self.hover_effect)
-            self.is_highlighted = True
+        try:
+            if not self.is_selected and not self.is_last_move:
+                # Create a new effect every time instead of reusing
+                effect = QGraphicsOpacityEffect(self)
+                effect.setOpacity(0.8)
+                self.setGraphicsEffect(effect)
+                self.is_highlighted = True
+        except Exception as e:
+            print(f"Error in enterEvent: {str(e)}")
         super().enterEvent(event)
         
     def leaveEvent(self, event):
         """Remove highlight on mouse leave"""
-        if self.is_highlighted:
-            self.setGraphicsEffect(None)
-            self.is_highlighted = False
+        try:
+            if self.is_highlighted:
+                self.setGraphicsEffect(None)
+                self.is_highlighted = False
+        except Exception as e:
+            print(f"Error in leaveEvent: {str(e)}")
         super().leaveEvent(event)
     
     def mousePressEvent(self, event):
         """Handle mouse click on square"""
-        # Ensure no highlight effect remains after clicking
-        if self.is_highlighted:
-            self.setGraphicsEffect(None)
-            self.is_highlighted = False
+        try:
+            # Ensure no highlight effect remains after clicking
+            if self.is_highlighted:
+                self.setGraphicsEffect(None)
+                self.is_highlighted = False
+        except Exception as e:
+            print(f"Error in mousePressEvent: {str(e)}")
         self.clicked.emit(self.row, self.col)
         super().mousePressEvent(event)
 
@@ -90,9 +97,12 @@ class ChessSquare(QLabel):
             base_color = "#ffe066"  # Soft yellow for last move
             
         # Reset any highlight effect if state changed
-        if (self.is_selected or self.is_last_move) and self.is_highlighted:
-            self.setGraphicsEffect(None)
-            self.is_highlighted = False
+        try:
+            if (self.is_selected or self.is_last_move) and self.is_highlighted:
+                self.setGraphicsEffect(None)
+                self.is_highlighted = False
+        except Exception as e:
+            print(f"Error in update_appearance: {str(e)}")
             
         # Set the base color of the square
         self.setStyleSheet(f"background-color: {base_color}; border: 1px solid black;")

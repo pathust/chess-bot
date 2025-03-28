@@ -1,5 +1,4 @@
 from PyQt5.QtCore import QThread, pyqtSignal
-from chess_engine import find_best_move
 from bot import ChessBot
 
 class AIWorker(QThread):
@@ -17,7 +16,8 @@ class AIWorker(QThread):
                 chess_bot = ChessBot(self.fen)
                 result = chess_bot.get_best_move(time_ms=1000)
             else:
-                result = find_best_move(self.fen, self.depth)
+                chess_bot = ChessBot(use_nnue=True, initial_fen=self.fen)
+                result = chess_bot.get_best_move(time_ms=1000)
 
             self.finished.emit(result)
         except Exception as e:

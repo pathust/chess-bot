@@ -5,7 +5,7 @@ from search.move_ordering import MoveOrdering
 from search.repetition_table import RepetitionTable
 from search.transposition_table import TranspositionTable
 from evaluation.evaluation import Evaluation
-
+from nnue_evaluation import NNUEEvaluation
 class Searcher:
     # Constants
     transposition_table_size_mb = 64
@@ -15,7 +15,7 @@ class Searcher:
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
 
-    def __init__(self, board: chess.Board):
+    def __init__(self, board: chess.Board, use_nnue=False):
         self.board = board
         self.current_depth = 0
         self.best_move = chess.Move.null()
@@ -33,7 +33,7 @@ class Searcher:
         self.search_diagnostics = SearchDiagnostics()
 
         # References and initialization
-        self.evaluation = Evaluation()
+        self.evaluation = NNUEEvaluation() if use_nnue else Evaluation()
         self.transposition_table = TranspositionTable(board, self.transposition_table_size_mb)
         self.move_orderer = MoveOrdering(self.transposition_table)
         self.repetition_table = RepetitionTable()
@@ -327,7 +327,7 @@ class Searcher:
         # Stand-pat evaluation
         eval_score = self.evaluation.evaluate(self.board)
         self.search_diagnostics.num_positions_evaluated += 1
-        
+
         if eval_score >= beta:
             self.search_diagnostics.num_cutoffs += 1
             return beta

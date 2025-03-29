@@ -221,8 +221,18 @@ class ChessBoard(QMainWindow):
         self.main_splitter.setSizes([700, 300])
         
         # Hide AI control panel in Human vs AI mode
-        # if self.mode == "human_ai":
-        #     self.control_panel.hide()
+        if self.mode == "human_ai":
+            # Show only relevant controls for Human vs AI mode
+            self.control_panel.start_button.hide()
+            self.control_panel.pause_button.hide()
+            
+            # Find and modify the title
+            for i in range(self.control_panel.widget().layout().count()):
+                item = self.control_panel.widget().layout().itemAt(i)
+                if item.widget() and isinstance(item.widget(), QLabel):
+                    if "AI Controls" in item.widget().text():
+                        item.widget().setText("AI Difficulty")
+                        break
         
         # Set initial status
         if self.mode == "human_ai":
@@ -435,81 +445,104 @@ class ChessBoard(QMainWindow):
         
         if not self.ai_game_running:
             return
-            
+                
         if best_move_uci:
-            # Convert the move to chess.Move object
-            move = chess.Move.from_uci(best_move_uci)
-            
-            # Get information for the move
-            from_square = chess.square_rank(move.from_square), chess.square_file(move.from_square)
-            to_square = chess.square_rank(move.to_square), chess.square_file(move.to_square)
-            
-            # Convert to UI coordinates
-            from_pos = (7 - from_square[0], from_square[1])
-            to_pos = (7 - to_square[0], to_square[1])
-            
-            # Get the piece information
-            piece = self.board.piece_at(move.from_square)
-            piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
-            
-            # Determine piece symbol for animation
-            piece_symbol = self.piece_symbols.get((piece.piece_type, piece.color), "")
-            
-            # Check if move is a capture
-            is_capture = self.board.is_capture(move)
-            
-            # Check if move is castling
-            is_castling = piece and piece.piece_type == chess.KING and abs(move.from_square % 8 - move.to_square % 8) > 1
-            
-            # Stop thinking indicator during animation
-            self.thinking_indicator.stop_thinking()
-            
-            # Function to execute after animation completes
-            def after_animation():
-                # Make the move on the actual board
-                self.board.push(move)
+            try:
+                # Convert the move to chess.Move object
+                move = chess.Move.from_uci(best_move_uci)
                 
-                # Add move to history
-                from_uci = chess.square_name(move.from_square)
-                to_uci = chess.square_name(move.to_square)
-                is_check = self.board.is_check()
+                # Get information for the move
+                from_square = chess.square_rank(move.from_square), chess.square_file(move.from_square)
+                to_square = chess.square_rank(move.to_square), chess.square_file(move.to_square)
                 
-                self.move_history.add_move(
-                    piece, 
-                    from_uci, 
-                    to_uci, 
-                    "White" if piece.color == chess.WHITE else "Black",
-                    is_capture,
-                    is_check,
-                    move.promotion,
-                    is_castling
-                )
+                # Convert to UI coordinates
+                from_pos = (7 - from_square[0], from_square[1])
+                to_pos = (7 - to_square[0], to_square[1])
                 
-                # Update the board display
-                self.last_move_from = from_pos
-                self.last_move_to = to_pos
-                self.update_board()
-                
-                # Check if game is over
-                if self.board.is_game_over():
+                # Get the piece information
+                piece = self.board.piece_at(move.from_square)
+                if piece is None:
+                    print(f"Error: No piece found at {move.from_square}")
+                    self.thinking_indicator.stop_thinking()
                     self.ai_game_running = False
-                    self.control_panel.start_button.setEnabled(False)
+                    self.control_panel.start_button.setEnabled(True)
                     self.control_panel.pause_button.setEnabled(False)
-                    self.show_game_over_popup()
-                else:
-                    # Switch to next AI
-                    self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                    self.status_label.setText("Invalid move: No piece found")
+                    return
                     
-                    # Update status text (will be hidden when AI starts thinking)
-                    next_ai = "AI 1" if self.turn == 'ai1' else "AI 2"
-                    self.thinking_indicator.start_thinking(next_ai)
-                    self.status_label.setText("")
-                    
-                    # Resume the AI timer for next move
-                    self.ai_timer.start(self.move_delay)
-            
-            # Animate the piece movement
-            self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_animation)
+                piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
+                
+                # Determine piece symbol for animation
+                piece_symbol = self.piece_symbols.get((piece.piece_type, piece.color), "")
+                
+                # Check if move is a capture
+                is_capture = self.board.is_capture(move)
+                
+                # Check if move is castling
+                is_castling = piece and piece.piece_type == chess.KING and abs(move.from_square % 8 - move.to_square % 8) > 1
+                
+                # Stop thinking indicator during animation
+                self.thinking_indicator.stop_thinking()
+                
+                # Function to execute after animation completes
+                def after_animation():
+                    try:
+                        # Make the move on the actual board
+                        self.board.push(move)
+                        
+                        # Add move to history
+                        from_uci = chess.square_name(move.from_square)
+                        to_uci = chess.square_name(move.to_square)
+                        is_check = self.board.is_check()
+                        
+                        self.move_history.add_move(
+                            piece, 
+                            from_uci, 
+                            to_uci, 
+                            "White" if piece.color == chess.WHITE else "Black",
+                            is_capture,
+                            is_check,
+                            move.promotion,
+                            is_castling
+                        )
+                        
+                        # Update the board display
+                        self.last_move_from = from_pos
+                        self.last_move_to = to_pos
+                        self.update_board()
+                        
+                        # Check if game is over
+                        if self.board.is_game_over():
+                            self.ai_game_running = False
+                            self.control_panel.start_button.setEnabled(False)
+                            self.control_panel.pause_button.setEnabled(False)
+                            self.show_game_over_popup()
+                        else:
+                            # Switch to next AI
+                            self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                            
+                            # Update status text (will be hidden when AI starts thinking)
+                            next_ai = "AI 1" if self.turn == 'ai1' else "AI 2"
+                            self.thinking_indicator.start_thinking(next_ai)
+                            self.status_label.setText("")
+                            
+                            # Resume the AI timer for next move
+                            self.ai_timer.start(self.move_delay)
+                    except Exception as e:
+                        print(f"Error in after_animation: {str(e)}")
+                        self.ai_game_running = False
+                        self.thinking_indicator.stop_thinking()
+                        self.status_label.setText(f"Error: {str(e)}")
+                
+                # Animate the piece movement
+                self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_animation)
+            except Exception as e:
+                print(f"Error handling AI move: {str(e)}")
+                self.ai_game_running = False
+                self.thinking_indicator.stop_thinking()
+                self.control_panel.start_button.setEnabled(True)
+                self.control_panel.pause_button.setEnabled(False)
+                self.status_label.setText(f"Error: {str(e)}")
         else:
             # No valid move found
             self.ai_game_running = False
@@ -544,22 +577,25 @@ class ChessBoard(QMainWindow):
         valid_destinations = [move.to_square for move in self.valid_moves]
         castling_destinations = [move.to_square for move in self.castling_moves]
         
-        # Check if either king is in check
-        white_king_in_check = self.board.is_check() and self.board.turn == chess.WHITE
-        black_king_in_check = self.board.is_check() and self.board.turn == chess.BLACK
+        # Check if kings are in check
+        white_king_in_check = False
+        black_king_in_check = False
         
-        # Find king positions if needed
+        if self.board.is_check():
+            white_king_in_check = self.board.turn == chess.WHITE
+            black_king_in_check = self.board.turn == chess.BLACK
+        
+        # Find king squares
         white_king_square = None
         black_king_square = None
         
-        if white_king_in_check or black_king_in_check:
-            for square in chess.SQUARES:
-                piece = self.board.piece_at(square)
-                if piece and piece.piece_type == chess.KING:
-                    if piece.color == chess.WHITE:
-                        white_king_square = square
-                    else:
-                        black_king_square = square
+        for sq in chess.SQUARES:
+            piece = self.board.piece_at(sq)
+            if piece and piece.piece_type == chess.KING:
+                if piece.color == chess.WHITE:
+                    white_king_square = sq
+                else:
+                    black_king_square = sq
 
         for i in range(8):
             for j in range(8):
@@ -572,7 +608,7 @@ class ChessBoard(QMainWindow):
                 square_widget.is_last_move = False
                 square_widget.is_valid_move = False
                 square_widget.is_castling_move = False
-                square_widget.is_checked = False  # Reset check state
+                square_widget.is_checked = False
                 
                 # Set states based on game state
                 if selected == square:
@@ -584,7 +620,7 @@ class ChessBoard(QMainWindow):
                 if square in castling_destinations:
                     square_widget.is_castling_move = True
                     
-                # Mark king as checked if applicable
+                # Highlight king in check
                 if (white_king_in_check and square == white_king_square) or \
                 (black_king_in_check and square == black_king_square):
                     square_widget.is_checked = True
@@ -816,66 +852,85 @@ class ChessBoard(QMainWindow):
         # Reset the AI computation flag
         self.ai_computation_active = False
         
-        if best_move_uci:
-            move = chess.Move.from_uci(best_move_uci)
-            
-            # Get animation info
-            from_square = move.from_square
-            to_square = move.to_square
-            piece = self.board.piece_at(from_square)
-            
-            from_pos = (7 - chess.square_rank(from_square), chess.square_file(from_square))
-            to_pos = (7 - chess.square_rank(to_square), chess.square_file(to_square))
-            
-            # Determine piece symbol and color for animation
-            piece_symbol = self.piece_symbols.get((piece.piece_type, piece.color), "")
-            piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
-            is_capture = self.board.is_capture(move)
-            
-            # Check if move is castling
-            is_castling = piece and piece.piece_type == chess.KING and abs(move.from_square % 8 - move.to_square % 8) > 1
-            
-            # Stop thinking indicator during animation
-            self.thinking_indicator.stop_thinking()
-            
-            # Animate the move
-            def after_ai_move():
-                # Execute move on the board
-                self.board.push(move)
+        try:
+            if best_move_uci:
+                move = chess.Move.from_uci(best_move_uci)
                 
-                # Add to move history
-                from_uci = chess.square_name(from_square)
-                to_uci = chess.square_name(to_square)
-                is_check = self.board.is_check()
+                # Get animation info
+                from_square = move.from_square
+                to_square = move.to_square
+                piece = self.board.piece_at(from_square)
                 
-                self.move_history.add_move(
-                    piece, 
-                    from_uci, 
-                    to_uci, 
-                    "Black",
-                    is_capture,
-                    is_check,
-                    move.promotion,
-                    is_castling
-                )
+                if piece is None:
+                    print(f"Error: No piece found at {from_square}")
+                    self.thinking_indicator.stop_thinking()
+                    self.turn = 'human'
+                    self.status_label.setText("AI made an invalid move. Your turn.")
+                    return
+                    
+                from_pos = (7 - chess.square_rank(from_square), chess.square_file(from_square))
+                to_pos = (7 - chess.square_rank(to_square), chess.square_file(to_square))
                 
-                # Update last move highlighting
-                self.last_move_from = from_pos
-                self.last_move_to = to_pos
+                # Determine piece symbol and color for animation
+                piece_symbol = self.piece_symbols.get((piece.piece_type, piece.color), "")
+                piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
+                is_capture = self.board.is_capture(move)
                 
-                # Update board and switch back to human's turn
-                self.update_board()
+                # Check if move is castling
+                is_castling = piece and piece.piece_type == chess.KING and abs(move.from_square % 8 - move.to_square % 8) > 1
+                
+                # Stop thinking indicator during animation
+                self.thinking_indicator.stop_thinking()
+                
+                # Animate the move
+                def after_ai_move():
+                    try:
+                        # Execute move on the board
+                        self.board.push(move)
+                        
+                        # Add to move history
+                        from_uci = chess.square_name(from_square)
+                        to_uci = chess.square_name(to_square)
+                        is_check = self.board.is_check()
+                        
+                        self.move_history.add_move(
+                            piece, 
+                            from_uci, 
+                            to_uci, 
+                            "Black",
+                            is_capture,
+                            is_check,
+                            move.promotion,
+                            is_castling
+                        )
+                        
+                        # Update last move highlighting
+                        self.last_move_from = from_pos
+                        self.last_move_to = to_pos
+                        
+                        # Update board and switch back to human's turn
+                        self.update_board()
+                        self.turn = 'human'
+                        
+                        # Check if game is over
+                        if self.board.is_game_over():
+                            self.show_game_over_popup()
+                    except Exception as e:
+                        print(f"Error after AI move: {str(e)}")
+                        self.turn = 'human'
+                        self.status_label.setText("Your turn")
+                
+                # Start animation
+                self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_ai_move)
+            else:
+                self.thinking_indicator.stop_thinking()
+                self.status_label.setText("AI could not find a valid move! Your turn.")
                 self.turn = 'human'
-                
-                # Check if game is over
-                if self.board.is_game_over():
-                    self.show_game_over_popup()
-            
-            # Start animation
-            self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_ai_move)
-        else:
+        except Exception as e:
+            print(f"Error in handle_human_ai_move_result: {str(e)}")
             self.thinking_indicator.stop_thinking()
-            self.status_label.setText("AI could not find a valid move!")
+            self.status_label.setText("AI error. Your turn.")
+            self.turn = 'human'
 
     def show_game_over_popup(self):
         """Show the game over popup with appropriate message and options"""

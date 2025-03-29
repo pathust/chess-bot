@@ -7,7 +7,7 @@ class StartScreen(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Chess Game - Mode Selection")
         self.setModal(True)
-        self.setFixedSize(500, 400)
+        self.setFixedSize(500, 500)  # Increased height for additional button
         self.setStyleSheet("""
             QDialog {
                 background-color: #f0f0f0;
@@ -68,6 +68,7 @@ class StartScreen(QDialog):
                 font-size: 18pt;
                 padding: 15px;
                 border-radius: 10px;
+                margin-bottom: 20px;
             }
             QPushButton:hover {
                 background-color: #c0392b;
@@ -77,8 +78,28 @@ class StartScreen(QDialog):
             }
         """)
         
+        # Add Load Game button
+        self.load_game_button = QPushButton("Load Saved Game")
+        self.load_game_button.setFixedHeight(70)
+        self.load_game_button.setStyleSheet("""
+            QPushButton {
+                background-color: #16a085;
+                color: white;
+                font-size: 18pt;
+                padding: 15px;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #1abc9c;
+            }
+            QPushButton:pressed {
+                background-color: #0e6655;
+            }
+        """)
+        
         buttons_layout.addWidget(self.human_ai_button)
         buttons_layout.addWidget(self.ai_ai_button)
+        buttons_layout.addWidget(self.load_game_button)
         layout.addWidget(button_container)
         
         self.human_ai_button.clicked.connect(self.choose_human_ai)

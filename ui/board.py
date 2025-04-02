@@ -263,6 +263,15 @@ class ChessBoard(QMainWindow):
             # Initialize the board
             self.update_board()
 
+        if load_game_data:
+            self.load_game_state(load_game_data)
+        else:
+            # Initialize the board
+            self.update_board()
+
+        # Add undo button functionality
+        self.setup_undo_button()  # Add this line here
+
     def save_game(self):
         """Save the current game state to a file with improved error handling"""
         try:
@@ -1188,3 +1197,158 @@ class ChessBoard(QMainWindow):
         
         # Apply the new sizes
         self.main_splitter.setSizes([board_portion, sidebar_portion])
+    
+    def setup_undo_button(self):
+        """Set up the undo button - call this method from __init__"""
+        # Import here to avoid circular imports
+        from ui.components.controls import UndoButton
+        
+        # Create undo button
+        self.undo_button = UndoButton(self)
+        self.undo_button.clicked.connect(self.undo_move)
+        
+        # Add button to control panel - find the right layout
+        try:
+            # Find button container in the control panel
+            for i in range(self.control_panel.widget().layout().count()):
+                item = self.control_panel.widget().layout().itemAt(i)
+                if isinstance(item, QHBoxLayout):
+                    # Check if this is the responsive layout
+                    for j in range(item.count()):
+                        subitem = item.itemAt(j)
+                        if isinstance(subitem.widget(), QWidget) and subitem.widget().layout() and isinstance(subitem.widget().layout(), QVBoxLayout):
+                            # This should be the button container
+                            button_layout = subitem.widget().layout()
+                            # Insert undo button at a good position (before reset)
+                            button_layout.insertWidget(2, self.undo_button)  # Adjust index as needed
+                            return True
+            
+            # Fallback in case layout structure is different
+            print("Couldn't find expected layout structure, using fallback method")
+            if hasattr(self.control_panel, 'main_layout'):
+                self.control_panel.main_layout.addWidget(self.undo_button)
+                return True
+                
+            return False
+        except Exception as e:
+            print(f"Error adding undo button: {e}")
+            return False
+
+    def undo_move(self):
+        """Undo the last move made in the game"""
+        try:
+            # Check if there are moves to undo
+            if len(self.board.move_stack) == 0:
+                self.status_label.setText("No moves to undo")
+                return
+                
+            # Store the current board state before undoing
+            previous_fen = self.board.fen()
+            last_move = self.board.pop()
+            
+            # Update the move history
+            self.update_move_history_after_undo()
+            
+            # Handle the turn logic based on game mode
+            if self.mode == "human_ai":
+                # If it was the AI's move, go back to human's turn
+                if self.turn == 'ai':
+                    self.turn = 'human'
+                    # Clear any AI worker if it's running
+                    if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
+                        if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
+                            self.ai_worker.terminate()
+                            self.ai_worker = None
+                            self.ai_computation_active = False
+                    # Stop thinking indicator
+                    if hasattr(self, 'thinking_indicator'):
+                        self.thinking_indicator.stop_thinking()
+                # If we're in human vs AI and we undo a human move, we need to undo the AI move too
+                # (if there's still a move to undo)
+                elif len(self.board.move_stack) > 0 and self.turn == 'human':
+                    # This will undo the AI's move
+                    previous_fen = self.board.fen()
+                    self.board.pop()
+                    # Update the move history again
+                    self.update_move_history_after_undo()
+            else:  # AI vs AI mode
+                # Simply toggle between AI1 and AI2
+                self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                
+                # If the AI game is running, pause it to avoid confusion
+                if hasattr(self, 'ai_game_running') and self.ai_game_running:
+                    self.pause_ai_game()
+                    
+            # Update last move highlighting
+            if len(self.board.move_stack) > 0:
+                last_move_uci = self.board.move_stack[-1].uci()
+                from_square = chess.parse_square(last_move_uci[:2])
+                to_square = chess.parse_square(last_move_uci[2:4])
+                
+                # Convert to UI coordinates (0-7, 0-7)
+                self.last_move_from = (7 - chess.square_rank(from_square), chess.square_file(from_square))
+                self.last_move_to = (7 - chess.square_rank(to_square), chess.square_file(to_square))
+            else:
+                # No previous moves, clear highlighting
+                self.last_move_from = None
+                self.last_move_to = None
+                
+            # Update the board display
+            self.update_board()
+            
+            # Notify the user about the undo
+            self.status_label.setText("Move undone!")
+            QTimer.singleShot(1500, self.update_status_after_undo)
+            
+        except Exception as e:
+            print(f"Error in undo_move: {str(e)}")
+            self.status_label.setText(f"Could not undo move")
+
+    def update_status_after_undo(self):
+        """Update the status message after an undo"""
+        if self.board.is_game_over():
+            return
+            
+        if self.mode == "human_ai":
+            if self.turn == 'human':
+                self.status_label.setText("Your turn")
+            else:
+                self.status_label.setText("AI's turn")
+        else:  # AI vs AI mode
+            if not hasattr(self, 'ai_game_running') or not self.ai_game_running:
+                self.status_label.setText("Press 'Start' to continue AI vs AI game")
+
+    def update_move_history_after_undo(self):
+        """Update the move history display after an undo operation"""
+        try:
+            if not hasattr(self, 'move_history'):
+                return
+                
+            # Get the current count of items in the move list
+            move_list = self.move_history.move_list
+            count = move_list.count()
+            
+            if count == 0:
+                return
+                
+            # Get the last item in the list
+            current_item = move_list.item(count - 1)
+            if current_item is None:
+                return
+                
+            current_text = current_item.text()
+            
+            # Check if the item contains both white and black moves
+            if " " in current_text:
+                # Remove just the black move part (keep white's move)
+                white_move = current_text.split(" ")[0]
+                current_item.setText(white_move)
+                # Remove any formatting that was added for combined moves
+                font = current_item.font()
+                font.setBold(False)
+                current_item.setFont(font)
+            else:
+                # Remove the entire item if it's just a white move
+                move_list.takeItem(count - 1)
+        except Exception as e:
+            print(f"Error updating move history after undo: {str(e)}")

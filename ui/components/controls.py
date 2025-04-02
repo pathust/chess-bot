@@ -143,3 +143,37 @@ class EnhancedSlider(QWidget):
     
     def setValue(self, value):
         self.slider.setValue(value)
+
+class UndoButton(QPushButton):
+    """Button specifically for the undo move functionality"""
+    def __init__(self, parent=None):
+        super().__init__("↩ Undo", parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(50)
+        self.setToolTip("Undo the last move")
+        self.updateStyle()
+    
+    def updateStyle(self):
+        """Set the button style"""
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 8px;
+                border: none;
+                text-align: center;
+            }
+            QPushButton:hover {
+                background-color: #a66bbe;
+            }
+            QPushButton:pressed {
+                background-color: #8e44ad;
+            }
+            QPushButton:disabled {
+                background-color: #bbbbbb;
+                color: #dddddd;
+            }
+        """)

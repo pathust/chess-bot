@@ -125,10 +125,10 @@ class AIControlPanel(QScrollArea):
         self.reset_button = ControlButton("↻ Reset", "#3498db")  # Brighter blue
         
         # Save Game button - teal color
-        self.save_button = ControlButton("💾 Save Game", "#16a085")  # Teal color
+        self.save_button = ControlButton("Save Game", "#16a085")  # Teal color
 
         # Return to Home button - brighter red
-        self.home_button = ControlButton("🏠 Home", "#e74c3c")  # Brighter red
+        self.home_button = ControlButton("Home", "#e74c3c")  # Brighter red
         
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.pause_button)

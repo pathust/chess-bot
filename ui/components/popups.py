@@ -1,6 +1,149 @@
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QComboBox, QHBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, 
+    QWidget, QLineEdit, QFormLayout, QMessageBox, QSpacerItem
+)
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QFont
+
+class SaveGameDialog(QDialog):
+    """Enhanced dialog for saving a game with name and notes"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Save Your Game")
+        self.setWindowFlags(Qt.Dialog)
+        self.setModal(True)
+        self.setMinimumSize(450, 300)
+        
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f5f5f5;
+                border-radius: 15px;
+                border: 2px solid #3498db;
+            }
+            QLabel {
+                color: #2c3e50;
+            }
+            QLineEdit {
+                padding: 8px;
+                border-radius: 5px;
+                border: 1px solid #bdc3c7;
+                background-color: white;
+                font-size: 12pt;
+            }
+            QTextEdit {
+                padding: 8px;
+                border-radius: 5px;
+                border: 1px solid #bdc3c7;
+                background-color: white;
+                font-size: 12pt;
+            }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Title
+        title = QLabel("Save Your Chess Game")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("""
+            font-size: 20pt;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+        """)
+        layout.addWidget(title)
+        
+        # Form for game details
+        form_layout = QFormLayout()
+        form_layout.setLabelAlignment(Qt.AlignRight)
+        form_layout.setFormAlignment(Qt.AlignLeft)
+        form_layout.setSpacing(12)
+        
+        # Game name field
+        self.game_name = QLineEdit()
+        self.game_name.setPlaceholderText("Enter a name for your saved game")
+        form_layout.addRow("Game Name:", self.game_name)
+        
+        # Notes field
+        self.game_notes = QLineEdit()
+        self.game_notes.setPlaceholderText("Add optional notes about this game")
+        form_layout.addRow("Notes:", self.game_notes)
+        
+        layout.addLayout(form_layout)
+        
+        # Add some spacing
+        layout.addItem(QSpacerItem(20, 20))
+        
+        # Buttons container
+        button_container = QWidget()
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setSpacing(15)
+        
+        # Save button
+        self.save_button = QPushButton("Save Game")
+        self.save_button.setCursor(Qt.PointingHandCursor)
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2ecc71;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #27ae60;
+            }
+            QPushButton:pressed {
+                background-color: #219653;
+            }
+        """)
+        self.save_button.clicked.connect(self.accept)
+        
+        # Cancel button
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setCursor(Qt.PointingHandCursor)
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+            QPushButton:pressed {
+                background-color: #a93226;
+            }
+        """)
+        self.cancel_button.clicked.connect(self.reject)
+        
+        button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.cancel_button)
+        
+        layout.addWidget(button_container)
+        
+        # Set the game name field as initial focus
+        self.game_name.setFocus()
+    
+    def get_game_name(self):
+        """Return the entered game name or a default if empty"""
+        name = self.game_name.text().strip()
+        if not name:
+            import datetime
+            return f"Chess Game - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        return name
+    
+    def get_game_notes(self):
+        """Return any game notes entered"""
+        return self.game_notes.text().strip()
 
 class StartScreen(QDialog):
     def __init__(self, parent=None):
@@ -203,13 +346,14 @@ class PawnPromotionDialog(QDialog):
 class GameOverPopup(QDialog):
     play_again_signal = pyqtSignal()
     return_home_signal = pyqtSignal()
+    save_game_signal = pyqtSignal()
     
     def __init__(self, result, parent=None, custom_message=None):
         super().__init__(parent)
         self.setWindowTitle("Game Over")
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)  
         self.setModal(True)
-        self.setFixedSize(450, 300)  # Made taller for additional buttons
+        self.setFixedSize(450, 350)  # Made taller for additional buttons
         
         self.setStyleSheet("""
             QDialog {
@@ -269,7 +413,34 @@ class GameOverPopup(QDialog):
         layout.addWidget(label)
 
         # Button container
-        button_layout = QHBoxLayout()
+        button_layout = QVBoxLayout()
+        button_layout.setSpacing(10)
+        
+        # Save Game button
+        self.save_game_button = QPushButton("Save This Game", self)
+        self.save_game_button.setCursor(Qt.PointingHandCursor)
+        self.save_game_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #16a085;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 12px 20px;
+                border-radius: 8px;
+                border: none;
+            }}
+            QPushButton:hover {{
+                background-color: #1abc9c;
+            }}
+            QPushButton:pressed {{
+                background-color: #0e6655;
+            }}
+        """)
+        self.save_game_button.clicked.connect(self.save_game)
+        button_layout.addWidget(self.save_game_button)
+        
+        # Second row of buttons
+        second_row = QHBoxLayout()
         
         # Play Again button
         self.play_again_button = QPushButton("Play Again", self)
@@ -317,13 +488,17 @@ class GameOverPopup(QDialog):
         """)
         self.return_home_button.clicked.connect(self.return_home)
         
-        button_layout.addWidget(self.play_again_button)
-        button_layout.addWidget(self.return_home_button)
+        second_row.addWidget(self.play_again_button)
+        second_row.addWidget(self.return_home_button)
         
+        button_layout.addLayout(second_row)
         layout.addLayout(button_layout)
-        layout.addSpacing(10)
-
+        
         self.setLayout(layout)
+    
+    def save_game(self):
+        self.save_game_signal.emit()
+        self.accept()
     
     def play_again(self):
         self.play_again_signal.emit()
@@ -340,6 +515,7 @@ class GameOverPopup(QDialog):
         try:
             self.play_again_signal.disconnect()
             self.return_home_signal.disconnect()
+            self.save_game_signal.disconnect()
         except Exception:
             pass  # It's okay if they're not connected
         super().closeEvent(event)

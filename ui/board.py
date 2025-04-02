@@ -7,10 +7,11 @@ import chess
 import sys
 import traceback
 
+import os
 from ui.components.board_components import ChessSquare, ThinkingIndicator
 from ui.components.history import MoveHistoryWidget
 from ui.components.sidebar import AIControlPanel, SavedGameManager
-from ui.components.popups import PawnPromotionDialog, GameOverPopup
+from ui.components.popups import PawnPromotionDialog, GameOverPopup, SaveGameDialog
 from ui.components.animations import AnimatedLabel
 from ui.workers import AIWorker
 
@@ -293,15 +294,16 @@ class ChessBoard(QMainWindow):
                 if success:
                     filename = os.path.basename(filepath)
                     QMessageBox.information(self, "Game Saved", 
-                                            f"Game successfully saved to {filename}")
+                                        f"Game successfully saved to {filename}")
                 else:
                     if filepath is not None:  # User canceled
                         QMessageBox.warning(self, "Save Canceled", 
-                                            "Game was not saved.")
+                                        "Game was not saved.")
             except Exception as e:
                 QMessageBox.critical(self, "Save Error", 
-                                    f"An error occurred while saving the game: {str(e)}")
+                                f"An error occurred while saving the game: {str(e)}")
                 print(f"Error saving game: {str(e)}")
+                traceback.print_exc()
             
             # Resume the game if it was running
             if was_running:
@@ -309,13 +311,14 @@ class ChessBoard(QMainWindow):
                     self.start_ai_game()
                 except Exception as e:
                     QMessageBox.warning(self, "Resuming Game", 
-                                        f"Couldn't resume the game: {str(e)}\nClick Start to continue.")
+                                    f"Couldn't resume the game: {str(e)}\nClick Start to continue.")
                     print(f"Error resuming game: {str(e)}")
                     
         except Exception as e:
             QMessageBox.critical(self, "Critical Error", 
-                                f"A critical error occurred: {str(e)}")
+                            f"A critical error occurred: {str(e)}")
             print(f"Critical error in save_game: {str(e)}")
+            traceback.print_exc()
         
     def load_game_state(self, game_data):
         """Load a saved game state"""
@@ -472,10 +475,13 @@ class ChessBoard(QMainWindow):
                                 return  # Cancel the return to home if save was canceled
                         except Exception as e:
                             print(f"Error saving game: {str(e)}")
-                            QMessageBox.warning(self, "Save Failed", 
-                                                f"Failed to save game: {str(e)}\n\nContinue returning home?",
-                                                QMessageBox.Yes | QMessageBox.No)
-                            if QMessageBox.No:
+                            msgBox = QMessageBox.warning(
+                                self, 
+                                "Save Failed", 
+                                f"Failed to save game: {str(e)}\n\nContinue returning home?",
+                                QMessageBox.Yes | QMessageBox.No
+                            )
+                            if msgBox == QMessageBox.No:
                                 return
                     elif reply == QMessageBox.Cancel:
                         return  # Cancel the return to home
@@ -492,7 +498,9 @@ class ChessBoard(QMainWindow):
             
         except Exception as e:
             # Last resort error handling
+            import traceback
             print(f"Critical error in return_to_home: {str(e)}")
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", 
                                 f"An error occurred while returning to home screen: {str(e)}")
             
@@ -1165,6 +1173,7 @@ class ChessBoard(QMainWindow):
         # Connect popup signals
         self.popup.play_again_signal.connect(self.reset_game)
         self.popup.return_home_signal.connect(self.return_to_home)
+        self.popup.save_game_signal.connect(self.save_game_with_dialog)
         
         self.popup.exec_()
 
@@ -1301,7 +1310,9 @@ class ChessBoard(QMainWindow):
             QTimer.singleShot(1500, self.update_status_after_undo)
             
         except Exception as e:
+            import traceback
             print(f"Error in undo_move: {str(e)}")
+            traceback.print_exc()
             self.status_label.setText(f"Could not undo move")
 
     def update_status_after_undo(self):
@@ -1326,6 +1337,10 @@ class ChessBoard(QMainWindow):
                 
             # Get the current count of items in the move list
             move_list = self.move_history.move_list
+            if not move_list:
+                print("Move list is not available")
+                return
+                
             count = move_list.count()
             
             if count == 0:
@@ -1340,15 +1355,101 @@ class ChessBoard(QMainWindow):
             
             # Check if the item contains both white and black moves
             if " " in current_text:
-                # Remove just the black move part (keep white's move)
-                white_move = current_text.split(" ")[0]
-                current_item.setText(white_move)
-                # Remove any formatting that was added for combined moves
-                font = current_item.font()
-                font.setBold(False)
-                current_item.setFont(font)
+                try:
+                    # Remove just the black move part (keep white's move)
+                    white_move = current_text.split(" ")[0]
+                    current_item.setText(white_move)
+                    # Remove any formatting that was added for combined moves
+                    font = current_item.font()
+                    font.setBold(False)
+                    current_item.setFont(font)
+                except Exception as e:
+                    print(f"Error formatting move text: {str(e)}")
             else:
-                # Remove the entire item if it's just a white move
-                move_list.takeItem(count - 1)
+                try:
+                    # Remove the entire item if it's just a white move
+                    move_list.takeItem(count - 1)
+                except Exception as e:
+                    print(f"Error removing move item: {str(e)}")
         except Exception as e:
+            import traceback
             print(f"Error updating move history after undo: {str(e)}")
+            traceback.print_exc()
+        
+    def save_game_with_dialog(self):
+        """Save the current game state to a file with a dialog for metadata"""
+        try:
+            # Pause the game if it's running
+            was_running = self.ai_game_running
+            if was_running:
+                self.pause_ai_game()
+            
+            # Show the enhanced save dialog
+            save_dialog = SaveGameDialog(self)
+            if save_dialog.exec_() == QDialog.Accepted:
+                game_name = save_dialog.get_game_name()
+                game_notes = save_dialog.get_game_notes()
+                
+                # Prepare game data with metadata
+                game_data = {
+                    'fen': self.board.fen(),
+                    'mode': self.mode,
+                    'turn': self.turn,
+                    'last_move_from': self.last_move_from,
+                    'last_move_to': self.last_move_to,
+                    'move_history': [move.uci() for move in self.board.move_stack],
+                    'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'game_name': game_name,
+                    'game_notes': game_notes
+                }
+                
+                # Call the SavedGameManager to save the game
+                try:
+                    # Open file dialog to select save location
+                    file_path, _ = QFileDialog.getSaveFileName(
+                        self, 
+                        "Save Game", 
+                        os.path.expanduser("~/Desktop"), 
+                        "Chess Game Files (*.chess);;All Files (*)"
+                    )
+                    
+                    if file_path:
+                        # Add .chess extension if not provided
+                        if not file_path.endswith('.chess'):
+                            file_path += '.chess'
+                            
+                        # Save the data to the file
+                        with open(file_path, 'w') as f:
+                            json.dump(game_data, f, indent=4)
+                        
+                        QMessageBox.information(self, "Game Saved", 
+                                        f"Game \"{game_name}\" successfully saved to {os.path.basename(file_path)}")
+                        return True, file_path
+                    else:
+                        QMessageBox.warning(self, "Save Canceled", "Game was not saved.")
+                        return False, None
+                        
+                except Exception as e:
+                    QMessageBox.critical(self, "Save Error", 
+                                    f"An error occurred while saving the game: {str(e)}")
+                    print(f"Error saving game: {str(e)}")
+                    traceback.print_exc()
+                    return False, None
+                
+            else:
+                # User canceled save dialog
+                if was_running:
+                    try:
+                        self.start_ai_game()
+                    except Exception as e:
+                        QMessageBox.warning(self, "Resuming Game", 
+                                        f"Couldn't resume the game: {str(e)}\nClick Start to continue.")
+                        print(f"Error resuming game: {str(e)}")
+                return False, None
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Critical Error", 
+                            f"A critical error occurred: {str(e)}")
+            print(f"Critical error in save_game_with_dialog: {str(e)}")
+            traceback.print_exc()
+            return False, None

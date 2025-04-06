@@ -1,9 +1,74 @@
-from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel
+import os
+import json
+import datetime
+from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt
 from ui.components.controls import ControlButton, EnhancedSlider
 
+class SavedGameManager:
+    """Manages saving and loading chess games"""
+    
+    @staticmethod
+    def save_game(board, game_mode, turn, last_move_from, last_move_to):
+        """Save the current game state to a file"""
+        # Create a dictionary with all the game state
+        game_data = {
+            'fen': board.fen(),
+            'mode': game_mode,
+            'turn': turn,
+            'last_move_from': last_move_from,
+            'last_move_to': last_move_to,
+            'move_history': [move.uci() for move in board.move_stack],
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # Open file dialog to select save location
+        file_path, _ = QFileDialog.getSaveFileName(
+            None, 
+            "Save Game", 
+            os.path.expanduser("~/Desktop"), 
+            "Chess Game Files (*.chess);;All Files (*)"
+        )
+        
+        if file_path:
+            # Add .chess extension if not provided
+            if not file_path.endswith('.chess'):
+                file_path += '.chess'
+                
+            # Save the data to the file
+            with open(file_path, 'w') as f:
+                json.dump(game_data, f, indent=4)
+            
+            return True, file_path
+        
+        return False, None
+    
+    @staticmethod
+    def load_game(file_path=None):
+        """Load a saved game from a file"""
+        # If no file path is provided, open file dialog to select file
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(
+                None, 
+                "Load Game", 
+                os.path.expanduser("~/Desktop"), 
+                "Chess Game Files (*.chess);;All Files (*)"
+            )
+        
+        if file_path and os.path.exists(file_path):
+            try:
+                with open(file_path, 'r') as f:
+                    game_data = json.load(f)
+                return True, game_data
+            except Exception as e:
+                QMessageBox.critical(None, "Error Loading Game", 
+                                     f"Could not load the game: {str(e)}")
+                return False, None
+        
+        return False, None
+
 class AIControlPanel(QScrollArea):
-    """AI control panel with improved responsive design"""
+    """AI control panel with improved responsive design and save game functionality"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.StyledPanel)
@@ -58,13 +123,17 @@ class AIControlPanel(QScrollArea):
 
         # Reset button - brighter blue
         self.reset_button = ControlButton("↻ Reset", "#3498db")  # Brighter blue
+        
+        # Save Game button - teal color
+        self.save_button = ControlButton("Save Game", "#16a085")  # Teal color
 
         # Return to Home button - brighter red
-        self.home_button = ControlButton("🏠 Home", "#e74c3c")  # Brighter red
+        self.home_button = ControlButton("Home", "#e74c3c")  # Brighter red
         
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.pause_button)
         button_layout.addWidget(self.reset_button)
+        button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.home_button)
         button_layout.addStretch(1)
         

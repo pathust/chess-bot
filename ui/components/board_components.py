@@ -111,7 +111,7 @@ class ChessSquare(QLabel):
         self.update()
 
 class ThinkingIndicator(QLabel):
-    """Visual indicator for AI thinking state with improved visibility"""
+    """Visual indicator for AI thinking state with improved visibility and animation"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
@@ -119,29 +119,35 @@ class ThinkingIndicator(QLabel):
             font-size: 16pt;
             font-weight: bold;
             color: white;
-            background-color: rgba(52, 73, 94, 0.8);
+            background-color: rgba(52, 73, 94, 0.9);
             border-radius: 10px;
             padding: 10px;
-            border: 1px solid white;
+            border: 2px solid #3498db;
             margin: 0px;
         """)
         self.setFixedHeight(50)
         self.dots = 0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_dots)
+        self.animation_timer = QTimer(self)
+        self.animation_timer.timeout.connect(self.pulse_effect)
+        self.opacity = 0.9
+        self.opacity_increasing = False
         self.hide()
         
     def start_thinking(self, ai_name):
-        """Start the thinking animation"""
+        """Start the thinking animation with pulsing effect"""
         self.base_text = f"{ai_name} is thinking"
         self.dots = 0
         self.setText(f"{self.base_text}...")
         self.show()
         self.timer.start(300)  # Update dots every 300ms
+        self.animation_timer.start(100)  # Pulse animation frames
         
     def stop_thinking(self):
-        """Stop the thinking animation"""
+        """Stop all animations"""
         self.timer.stop()
+        self.animation_timer.stop()
         self.hide()
         
     def update_dots(self):
@@ -149,3 +155,26 @@ class ThinkingIndicator(QLabel):
         self.dots = (self.dots + 1) % 4
         dot_text = "." * self.dots
         self.setText(f"{self.base_text}{dot_text.ljust(3)}")
+        
+    def pulse_effect(self):
+        """Create a subtle pulsing effect by changing opacity"""
+        if self.opacity_increasing:
+            self.opacity += 0.03
+            if self.opacity >= 0.95:
+                self.opacity_increasing = False
+        else:
+            self.opacity -= 0.03
+            if self.opacity <= 0.75:
+                self.opacity_increasing = True
+                
+        # Update the stylesheet with new opacity
+        self.setStyleSheet(f"""
+            font-size: 16pt;
+            font-weight: bold;
+            color: white;
+            background-color: rgba(52, 73, 94, {self.opacity});
+            border-radius: 10px;
+            padding: 10px;
+            border: 2px solid #3498db;
+            margin: 0px;
+        """)

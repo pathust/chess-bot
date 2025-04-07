@@ -1,15 +1,21 @@
-from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
-    QHBoxLayout, QFrame, QFileDialog, QTextBrowser, QSplitter, QWidget
-)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIcon, QFont, QColor
+"""
+Dialog for loading saved chess games.
+This module provides a user interface for browsing and loading saved games.
+"""
+
 import os
 import json
 import datetime
+from PyQt5.QtWidgets import (
+    QDialog, QVBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
+    QHBoxLayout, QFrame, QFileDialog, QTextBrowser, QSplitter, QWidget,
+    QGraphicsDropShadowEffect, QSizePolicy
+)
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QIcon, QFont, QColor, QPixmap
 
 class LoadGameDialog(QDialog):
-    """Enhanced dialog to load a saved chess game"""
+    """Enhanced dialog to load a saved chess game."""
     
     game_selected = pyqtSignal(dict)
     
@@ -17,7 +23,7 @@ class LoadGameDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Load Saved Game")
         self.setModal(True)
-        self.setMinimumSize(650, 500)
+        self.setMinimumSize(700, 550)
         self.setStyleSheet("""
             QDialog {
                 background-color: #f0f0f0;
@@ -45,6 +51,13 @@ class LoadGameDialog(QDialog):
             }
         """)
         
+        # Add drop shadow effect for the dialog
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setOffset(0, 10)
+        self.setGraphicsEffect(shadow)
+        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
@@ -67,6 +80,7 @@ class LoadGameDialog(QDialog):
         
         # Browse button
         browse_button = QPushButton("Browse for Game File")
+        browse_button.setCursor(Qt.PointingHandCursor)
         browse_button.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
@@ -86,6 +100,13 @@ class LoadGameDialog(QDialog):
         browse_button.clicked.connect(self.browse_for_file)
         layout.addWidget(browse_button)
         
+        # Add drop shadow to the browse button
+        button_shadow = QGraphicsDropShadowEffect(browse_button)
+        button_shadow.setBlurRadius(15)
+        button_shadow.setColor(QColor(0, 0, 0, 70))
+        button_shadow.setOffset(0, 5)
+        browse_button.setGraphicsEffect(button_shadow)
+        
         # Create a splitter for game info and preview
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -101,7 +122,7 @@ class LoadGameDialog(QDialog):
             }
         """)
         self.info_frame.setFrameShape(QFrame.StyledPanel)
-        self.info_frame.setMinimumWidth(300)
+        self.info_frame.setMinimumWidth(350)
         
         info_layout = QVBoxLayout(self.info_frame)
         
@@ -134,6 +155,7 @@ class LoadGameDialog(QDialog):
         """)
         preview_frame.setFrameShape(QFrame.StyledPanel)
         preview_frame.setMinimumWidth(250)
+        preview_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         preview_layout = QVBoxLayout(preview_frame)
         
@@ -142,10 +164,13 @@ class LoadGameDialog(QDialog):
         preview_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #2c3e50;")
         preview_layout.addWidget(preview_title)
         
-        self.preview_content = QLabel("Select a game file to see a preview")
+        # Add a simple chess board preview widget
+        self.preview_content = QLabel()
         self.preview_content.setAlignment(Qt.AlignCenter)
         self.preview_content.setStyleSheet("font-size: 12pt; color: #777777;")
+        self.preview_content.setText("Select a game file to see a preview")
         self.preview_content.setWordWrap(True)
+        self.preview_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         preview_layout.addWidget(self.preview_content)
         
         # Add frames to splitter
@@ -153,7 +178,7 @@ class LoadGameDialog(QDialog):
         splitter.addWidget(preview_frame)
         
         # Set initial splitter sizes (60% info, 40% preview)
-        splitter.setSizes([400, 250])
+        splitter.setSizes([400, 300])
         
         layout.addWidget(splitter)
         
@@ -161,6 +186,7 @@ class LoadGameDialog(QDialog):
         button_layout = QHBoxLayout()
         
         self.load_button = QPushButton("Load Game")
+        self.load_button.setCursor(Qt.PointingHandCursor)
         self.load_button.setStyleSheet("""
             QPushButton {
                 background-color: #2ecc71;
@@ -185,6 +211,7 @@ class LoadGameDialog(QDialog):
         self.load_button.setEnabled(False)
         
         cancel_button = QPushButton("Cancel")
+        cancel_button.setCursor(Qt.PointingHandCursor)
         cancel_button.setStyleSheet("""
             QPushButton {
                 background-color: #e74c3c;
@@ -203,6 +230,14 @@ class LoadGameDialog(QDialog):
         """)
         cancel_button.clicked.connect(self.reject)
         
+        # Add drop shadows to buttons
+        for button in [self.load_button, cancel_button]:
+            shadow = QGraphicsDropShadowEffect(button)
+            shadow.setBlurRadius(15)
+            shadow.setColor(QColor(0, 0, 0, 70))
+            shadow.setOffset(0, 5)
+            button.setGraphicsEffect(shadow)
+        
         button_layout.addWidget(self.load_button)
         button_layout.addWidget(cancel_button)
         
@@ -211,9 +246,41 @@ class LoadGameDialog(QDialog):
         # Initialize variables
         self.selected_file = None
         self.game_data = None
+        
+        # Create mini chessboard preview
+        self.create_empty_board_preview()
+    
+    def create_empty_board_preview(self):
+        """Create a simple visual representation of a chess board."""
+        # Create a pixmap for the chess board preview
+        board_size = 200
+        pixmap = QPixmap(board_size, board_size)
+        pixmap.fill(Qt.transparent)
+        
+        # Paint the board
+        painter = QPainter(pixmap)
+        square_size = board_size // 8
+        
+        for row in range(8):
+            for col in range(8):
+                x = col * square_size
+                y = row * square_size
+                if (row + col) % 2 == 0:
+                    color = QColor("#c1bfb0")  # Light squares
+                else:
+                    color = QColor("#7a9bbe")  # Dark squares
+                
+                painter.fillRect(x, y, square_size, square_size, color)
+        
+        painter.end()
+        
+        # Set the pixmap as the preview image
+        self.preview_content.setPixmap(pixmap)
+        self.preview_content.setFixedSize(board_size, board_size)
+        self.preview_content.setScaledContents(True)
     
     def browse_for_file(self):
-        """Open file dialog to browse for a saved game file"""
+        """Open file dialog to browse for a saved game file."""
         file_path, _ = QFileDialog.getOpenFileName(
             self, 
             "Select Saved Game", 
@@ -237,7 +304,7 @@ class LoadGameDialog(QDialog):
                 self.game_data = None
     
     def update_game_info(self):
-        """Update the display with information about the selected game"""
+        """Update the display with information about the selected game."""
         if not self.game_data:
             return
         
@@ -281,11 +348,78 @@ class LoadGameDialog(QDialog):
         
         self.details.setHtml(details_html)
         
-        # Update preview with a placeholder for now
-        # Could be enhanced to show actual board position later
-        self.preview_content.setText(f"Game position: {move_count} moves played\nCurrent turn: {turn}")
+        # Update the preview with a simple board representation
+        self.update_board_preview()
+    
+    def update_board_preview(self):
+        """Update the board preview based on the FEN in the saved game."""
+        if 'fen' in self.game_data:
+            fen = self.game_data['fen'].split()[0]  # Get board part of FEN
+            board_size = 200
+            square_size = board_size // 8
+            
+            # Create pixmap
+            pixmap = QPixmap(board_size, board_size)
+            pixmap.fill(Qt.transparent)
+            
+            # Paint board
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            # Draw board squares
+            for row in range(8):
+                for col in range(8):
+                    x = col * square_size
+                    y = row * square_size
+                    if (row + col) % 2 == 0:
+                        color = QColor("#c1bfb0")  # Light squares
+                    else:
+                        color = QColor("#7a9bbe")  # Dark squares
+                    
+                    painter.fillRect(x, y, square_size, square_size, color)
+            
+            # Draw pieces based on FEN
+            row = 0
+            col = 0
+            
+            # Map FEN characters to Unicode chess pieces
+            piece_map = {
+                'K': '♚', 'Q': '♛', 'R': '♜', 'B': '♝', 'N': '♞', 'P': '♟',
+                'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+            }
+            
+            for char in fen:
+                if char == '/':
+                    row += 1
+                    col = 0
+                elif char.isdigit():
+                    col += int(char)
+                elif char in piece_map:
+                    x = col * square_size
+                    y = row * square_size
+                    
+                    # Choose color based on case
+                    color = Qt.white if char.isupper() else Qt.black
+                    
+                    # Draw piece
+                    painter.setPen(color)
+                    painter.setFont(QFont('Arial', square_size * 0.6))  # Scale font size
+                    painter.drawText(
+                        x, y, square_size, square_size, 
+                        Qt.AlignCenter, piece_map[char]
+                    )
+                    
+                    col += 1
+            
+            painter.end()
+            
+            # Set the pixmap as the preview content
+            self.preview_content.setPixmap(pixmap)
+            self.preview_content.setFixedSize(board_size, board_size)
+            self.preview_content.setScaledContents(True)
     
     def accept_file(self):
+        """Accept the selected file and emit signal with game data."""
         if self.game_data:
             self.game_selected.emit(self.game_data)
             # Force close this dialog

@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt5.QtGui import QColor, QFont, QPalette
 from ui.board import ChessBoard
 from ui.components.popups import StartScreen
-from ui.components.LoadGameDialog import LoadGameDialog
+from ui.components.load_game_dialog import LoadGameDialog
 from ui.components.sidebar import SavedGameManager
 
 class ChessApp(QApplication):

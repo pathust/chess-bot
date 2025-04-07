@@ -13,7 +13,7 @@ from ui.components.history import MoveHistoryWidget
 from ui.components.sidebar import AIControlPanel, SavedGameManager
 from ui.components.popups import PawnPromotionDialog, GameOverPopup, SaveGameDialog
 from ui.components.animations import AnimatedLabel
-from ui.workers import AIWorker
+from ui.workers.ai_worker import AIWorker
 
 def exception_hook(exctype, value, tb):
     print(f"Ngoại lệ không được xử lý: {exctype}")
@@ -100,7 +100,9 @@ class ChessBoard(QMainWindow):
         # Create board widget with fixed size
         board_widget = QWidget()
         board_widget.setStyleSheet("background-color: #455a64; padding: 5px; border-radius: 5px;")
-        self.board_layout = QGridLayout(board_widget)
+        
+        from ui.board_layout_manager import SquareGridLayout
+        self.board_layout = SquareGridLayout(board_widget)
         self.board_layout.setSpacing(0)
         self.board_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -212,7 +214,7 @@ class ChessBoard(QMainWindow):
         # Disable pause button initially
         self.control_panel.pause_button.setEnabled(False)
         
-        self.control_panel.speed_slider.valueChanged.connect(self.update_move_speed)
+        self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
         self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
         
         # Add everything to the main splitter
@@ -510,10 +512,10 @@ class ChessBoard(QMainWindow):
                 self.close()
         
     def update_move_speed(self, value):
-        """Update the AI move animation speed"""
-        self.move_delay = value
-        if self.ai_game_running:
-            self.ai_timer.setInterval(self.move_delay)
+        """Update the AI move animation speed based on depth."""
+        # Convert depth to move delay (higher depth = slower moves)
+        self.move_delay = 800  # Default value
+        # No longer needed since we're using depth-based timing
     
     def update_ai_depth(self, value):
         """Update the AI thinking depth"""

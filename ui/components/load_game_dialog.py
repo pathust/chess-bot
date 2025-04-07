@@ -9,10 +9,12 @@ import datetime
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
     QHBoxLayout, QFrame, QFileDialog, QTextBrowser, QSplitter, QWidget,
-    QGraphicsDropShadowEffect, QSizePolicy
+    QGraphicsDropShadowEffect, QSizePolicy, QMessageBox
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIcon, QFont, QColor, QPixmap
+from PyQt5.QtGui import QIcon, QFont, QColor, QPixmap, QPainter
+
+
 
 class LoadGameDialog(QDialog):
     """Enhanced dialog to load a saved chess game."""
@@ -21,6 +23,13 @@ class LoadGameDialog(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        font = QFont()
+        font.setFamily("Arial")
+        font.setPointSize(10)
+        self.setFont(font)
+
+
         self.setWindowTitle("Load Saved Game")
         self.setModal(True)
         self.setMinimumSize(700, 550)
@@ -280,29 +289,73 @@ class LoadGameDialog(QDialog):
         self.preview_content.setScaledContents(True)
     
     def browse_for_file(self):
-        """Open file dialog to browse for a saved game file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 
-            "Select Saved Game", 
-            os.path.expanduser("~/Desktop"), 
-            "Chess Game Files (*.chess);;All Files (*)"
-        )
-        
-        if file_path and os.path.exists(file_path):
-            try:
-                with open(file_path, 'r') as f:
-                    self.game_data = json.load(f)
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 
+                "Select Saved Game", 
+                os.path.expanduser("~/Desktop"), 
+                "Chess Game Files (*.chess);;All Files (*)"
+            )
+            
+            if file_path and os.path.exists(file_path):
+                try:
+                    # Simplified font creation
+                    font = QFont()  # Create empty QFont
+                    font.setFamily("Arial")
+                    font.setPointSize(10)
                     
-                self.selected_file = file_path
-                self.update_game_info()
-                self.load_button.setEnabled(True)
-            except Exception as e:
-                self.info_label.setText(f"Error loading file: {str(e)}")
-                self.details.setHtml("")
-                self.preview_content.setText("Could not load the selected file")
-                self.load_button.setEnabled(False)
-                self.game_data = None
-    
+                    # Read the file
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        game_data = json.load(f)
+                    
+                    # Validate game data
+                    required_keys = ['fen', 'mode', 'turn']
+                    missing_keys = [key for key in required_keys if key not in game_data]
+                    
+                    if missing_keys:
+                        raise ValueError(f"Missing required keys: {', '.join(missing_keys)}")
+                    
+                    self.game_data = game_data
+                    self.selected_file = file_path
+                    self.update_game_info()
+                    self.load_button.setEnabled(True)
+                
+                except json.JSONDecodeError:
+                    QMessageBox.critical(
+                        self, 
+                        "JSON Error", 
+                        "The file is not a valid JSON format.\n"
+                        "Ensure you're using a proper chess game save file."
+                    )
+                    self.game_data = None
+                    self.load_button.setEnabled(False)
+                
+                except ValueError as ve:
+                    QMessageBox.critical(
+                        self, 
+                        "Invalid Game Save", 
+                        str(ve)
+                    )
+                    self.game_data = None
+                    self.load_button.setEnabled(False)
+                
+                except Exception as e:
+                    QMessageBox.critical(
+                        self, 
+                        "Unexpected Error", 
+                        f"Could not load the file:\n{str(e)}\n\n"
+                        "Please check the file and try again."
+                    )
+                    self.game_data = None
+                    self.load_button.setEnabled(False)
+        
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "File Access Error", 
+                f"An error occurred while accessing the file:\n{str(e)}"
+            )
+            
     def update_game_info(self):
         """Update the display with information about the selected game."""
         if not self.game_data:
@@ -352,72 +405,89 @@ class LoadGameDialog(QDialog):
         self.update_board_preview()
     
     def update_board_preview(self):
-        """Update the board preview based on the FEN in the saved game."""
         if 'fen' in self.game_data:
-            fen = self.game_data['fen'].split()[0]  # Get board part of FEN
-            board_size = 200
-            square_size = board_size // 8
-            
-            # Create pixmap
-            pixmap = QPixmap(board_size, board_size)
-            pixmap.fill(Qt.transparent)
-            
-            # Paint board
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.Antialiasing)
-            
-            # Draw board squares
-            for row in range(8):
-                for col in range(8):
-                    x = col * square_size
-                    y = row * square_size
-                    if (row + col) % 2 == 0:
-                        color = QColor("#c1bfb0")  # Light squares
-                    else:
-                        color = QColor("#7a9bbe")  # Dark squares
+            try:
+                fen = self.game_data['fen'].split()[0]  # Get board part of FEN
+                board_size = 200
+                square_size = board_size // 8
+                
+                # Create pixmap
+                pixmap = QPixmap(board_size, board_size)
+                pixmap.fill(Qt.transparent)
+                
+                # Ensure painter is created and destroyed properly
+                painter = QPainter()
+                try:
+                    # Begin painting on the pixmap
+                    if not painter.begin(pixmap):
+                        raise RuntimeError("Could not begin painting")
                     
-                    painter.fillRect(x, y, square_size, square_size, color)
-            
-            # Draw pieces based on FEN
-            row = 0
-            col = 0
-            
-            # Map FEN characters to Unicode chess pieces
-            piece_map = {
-                'K': '♚', 'Q': '♛', 'R': '♜', 'B': '♝', 'N': '♞', 'P': '♟',
-                'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
-            }
-            
-            for char in fen:
-                if char == '/':
-                    row += 1
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    
+                    # Draw board squares
+                    for row in range(8):
+                        for col in range(8):
+                            x = col * square_size
+                            y = row * square_size
+                            if (row + col) % 2 == 0:
+                                color = QColor("#c1bfb0")  # Light squares
+                            else:
+                                color = QColor("#7a9bbe")  # Dark squares
+                            
+                            painter.fillRect(x, y, square_size, square_size, color)
+                    
+                    # Draw pieces based on FEN
+                    row = 0
                     col = 0
-                elif char.isdigit():
-                    col += int(char)
-                elif char in piece_map:
-                    x = col * square_size
-                    y = row * square_size
                     
-                    # Choose color based on case
-                    color = Qt.white if char.isupper() else Qt.black
+                    # Map FEN characters to Unicode chess pieces
+                    piece_map = {
+                        'K': '♚', 'Q': '♛', 'R': '♜', 'B': '♝', 'N': '♞', 'P': '♟',
+                        'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+                    }
                     
-                    # Draw piece
-                    painter.setPen(color)
-                    painter.setFont(QFont('Arial', square_size * 0.6))  # Scale font size
-                    painter.drawText(
-                        x, y, square_size, square_size, 
-                        Qt.AlignCenter, piece_map[char]
-                    )
-                    
-                    col += 1
+                    for char in fen:
+                        if char == '/':
+                            row += 1
+                            col = 0
+                        elif char.isdigit():
+                            col += int(char)
+                        elif char in piece_map:
+                            x = col * square_size
+                            y = row * square_size
+                            
+                            # Choose color based on case
+                            color = Qt.white if char.isupper() else Qt.black
+                            
+                            # Draw piece
+                            piece_font = QFont('Arial', int(square_size * 0.6))
+                            painter.setFont(piece_font)
+                            painter.setPen(color)
+                            painter.drawText(
+                                x, y, square_size, square_size, 
+                                Qt.AlignCenter, piece_map[char]
+                            )
+                            
+                            col += 1
+                
+                except Exception as paint_error:
+                    print(f"Painting error: {paint_error}")
+                    return
+                
+                finally:
+                    # Always end painting, even if an error occurs
+                    painter.end()
+                
+                # Set the pixmap as the preview content
+                self.preview_content.setPixmap(pixmap)
+                self.preview_content.setFixedSize(board_size, board_size)
+                self.preview_content.setScaledContents(True)
             
-            painter.end()
-            
-            # Set the pixmap as the preview content
-            self.preview_content.setPixmap(pixmap)
-            self.preview_content.setFixedSize(board_size, board_size)
-            self.preview_content.setScaledContents(True)
-    
+            except Exception as e:
+                print(f"Error in update_board_preview: {e}")
+                # Set a default error preview
+                self.preview_content.setText("Could not generate board preview")
+        
     def accept_file(self):
         """Accept the selected file and emit signal with game data."""
         if self.game_data:

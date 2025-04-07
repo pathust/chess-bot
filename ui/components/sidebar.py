@@ -23,7 +23,7 @@ class SavedGameManager:
     @staticmethod
     def save_game(board, game_mode, turn, last_move_from, last_move_to, game_name=None, game_notes=None):
         """
-        Save the current game state to a file.
+        Save the current game state to a file with enhanced error handling.
         
         Args:
             board (chess.Board): The chess board to save
@@ -35,11 +35,16 @@ class SavedGameManager:
             game_notes (str, optional): Notes about the saved game
         
         Returns:
-            tuple: (success: bool, file_path: str)
+            tuple: (success: bool, file_path: str or None)
         """
         try:
-            # Create a dictionary with all the game state
+            # Validate critical inputs
+            if not board:
+                raise ValueError("Cannot save an empty board")
+            
+            # Create a comprehensive game state dictionary
             game_data = {
+                'version': '1.0',  # Add version for future compatibility
                 'fen': board.fen(),
                 'mode': game_mode,
                 'turn': turn,
@@ -49,83 +54,139 @@ class SavedGameManager:
                 'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
-            # Add optional metadata if provided
-            if game_name:
-                game_data['game_name'] = game_name
-            if game_notes:
-                game_data['game_notes'] = game_notes
+            # Add optional metadata with validation
+            if game_name and isinstance(game_name, str):
+                game_data['game_name'] = game_name.strip()[:100]  # Limit name length
+            
+            if game_notes and isinstance(game_notes, str):
+                game_data['game_notes'] = game_notes.strip()[:500]  # Limit notes length
             
             # Open file dialog to select save location
             file_path, _ = QFileDialog.getSaveFileName(
                 None, 
-                "Save Game", 
+                "Save Chess Game", 
                 os.path.expanduser("~/Desktop"), 
                 "Chess Game Files (*.chess);;All Files (*)"
             )
             
-            if file_path:
-                # Add .chess extension if not provided
-                if not file_path.endswith('.chess'):
-                    file_path += '.chess'
-                    
-                # Save the data to the file
-                with open(file_path, 'w') as f:
-                    json.dump(game_data, f, indent=4)
-                
-                return True, file_path
+            if not file_path:
+                return False, None
             
-            return False, None
-        except Exception as e:
+            # Ensure .chess extension
+            if not file_path.lower().endswith('.chess'):
+                file_path += '.chess'
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            # Save with proper encoding and error handling
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(game_data, f, indent=4, ensure_ascii=False)
+            
+            return True, file_path
+        
+        except PermissionError:
             ErrorHandler.show_error(
                 None, 
                 "Save Error", 
-                f"Error saving game: {str(e)}"
+                "Permission denied. Cannot save file in the selected location."
             )
-            return False, None
-    
+        except Exception as e:
+            # Log the full error for debugging
+            print(f"Unexpected error in save_game: {e}")
+            ErrorHandler.show_error(
+                None, 
+                "Save Error", 
+                f"An unexpected error occurred: {str(e)}"
+            )
+        
+        return False, None
+
     @staticmethod
     def load_game(file_path=None):
         """
-        Load a saved game from a file.
+        Load a saved chess game with robust error handling.
         
         Args:
-            file_path (str, optional): Path to the saved game file
-                If not provided, a file dialog will open
-                
+            file_path (str, optional): Path to the game file to load
+        
         Returns:
-            tuple: (success: bool, game_data: dict)
+            tuple: (success: bool, game_data: dict or None)
         """
         try:
-            # If no file path is provided, open file dialog to select file
+            # If no file path provided, open file dialog
             if not file_path:
                 file_path, _ = QFileDialog.getOpenFileName(
                     None, 
-                    "Load Game", 
+                    "Load Chess Game", 
                     os.path.expanduser("~/Desktop"), 
                     "Chess Game Files (*.chess);;All Files (*)"
                 )
             
-            if file_path and os.path.exists(file_path):
-                try:
-                    with open(file_path, 'r') as f:
-                        game_data = json.load(f)
-                    return True, game_data
-                except Exception as e:
+            # Validate file path
+            if not file_path or not os.path.exists(file_path):
+                return False, None
+            
+            # Validate file extension
+            if not file_path.lower().endswith('.chess'):
+                ErrorHandler.show_error(
+                    None,
+                    "Invalid File", 
+                    "Please select a valid .chess game file."
+                )
+                return False, None
+            
+            # Read and parse the file with robust handling
+            with open(file_path, 'r', encoding='utf-8') as f:
+                file_contents = f.read()
+                
+                # Additional safeguard against empty files
+                if not file_contents.strip():
                     ErrorHandler.show_error(
                         None,
-                        "Error Loading Game", 
-                        f"Could not load the game: {str(e)}"
+                        "Empty File", 
+                        "The selected game file is empty."
+                    )
+                    return False, None
+                
+                try:
+                    game_data = json.loads(file_contents)
+                except json.JSONDecodeError:
+                    ErrorHandler.show_error(
+                        None,
+                        "JSON Error", 
+                        "The game file is corrupted or not in the correct format."
                     )
                     return False, None
             
-            return False, None
-        except Exception as e:
+            # Validate essential game data
+            required_keys = ['fen', 'mode', 'turn', 'move_history']
+            if not all(key in game_data for key in required_keys):
+                ErrorHandler.show_error(
+                    None,
+                    "Invalid Game Data", 
+                    "The saved game is missing critical information."
+                )
+                return False, None
+            
+            return True, game_data
+        
+        except PermissionError:
             ErrorHandler.show_error(
                 None,
-                "File Error",
-                f"Error accessing file: {str(e)}"
+                "Permission Denied", 
+                "Cannot read the selected file. Check file permissions."
             )
-            return False, None
+        except Exception as e:
+            # Log unexpected errors
+            print(f"Unexpected error in load_game: {e}")
+            ErrorHandler.show_error(
+                None,
+                "Load Error", 
+                f"An unexpected error occurred: {str(e)}"
+            )
+        
+        return False, None
 
 
 class AIControlPanel(QScrollArea):

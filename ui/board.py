@@ -1,8 +1,11 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QDialog,
-    QSplitter, QFrame
+    QSplitter, QFrame, QMessageBox
 )
 from PyQt5.QtCore import Qt, QPoint, QTimer, QPropertyAnimation
+from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import QApplication
+
 import chess
 import sys
 import traceback
@@ -23,6 +26,13 @@ def exception_hook(exctype, value, tb):
 class ChessBoard(QMainWindow):
     def __init__(self, mode="human_ai", parent_app=None, load_game_data=None):
         super().__init__()
+
+        font = QFont()
+        font.setFamily("Arial")
+        font.setPointSize(10)
+        QApplication.setFont(font)
+
+        self.setFont(font)
         
         self.popup = None
         self.mode = mode

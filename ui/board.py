@@ -6,6 +6,8 @@ from PyQt5.QtCore import Qt, QPoint, QTimer, QPropertyAnimation
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QApplication
 
+from ui.components.popups import ResignConfirmationDialog, GameOverPopup
+
 import chess
 import sys
 import traceback
@@ -26,6 +28,8 @@ def exception_hook(exctype, value, tb):
 class ChessBoard(QMainWindow):
     def __init__(self, mode="human_ai", parent_app=None, load_game_data=None):
         super().__init__()
+
+        self.patch_board_for_resignation()
 
         font = QFont()
         font.setFamily("Arial")
@@ -797,7 +801,6 @@ class ChessBoard(QMainWindow):
                 
         return valid_moves, castling_moves
 
-    # Modified part of the update_board method in ui/board.py
     def update_board(self):
         """Update the visual representation of the chess board"""
 
@@ -853,21 +856,36 @@ class ChessBoard(QMainWindow):
                 (black_king_in_check and square == black_king_square):
                     square_widget.is_checked = True
                     
-                # Update the square appearance
+                # Update the square appearance before setting text
                 square_widget.update_appearance()
                 
                 # Draw piece or empty square
                 if piece:
                     symbol = self.piece_symbols.get((piece.piece_type, piece.color), "")
                     piece_color = "#000000" if piece.color == chess.BLACK else "#FFFFFF"
+                    
+                    # Ensure king is visible even when checked
                     square_widget.setText(symbol)
-                    square_widget.setStyleSheet(square_widget.styleSheet() + f"""
-                        font-size: 40px; 
-                        color: {piece_color};
-                        font-weight: bold;
-                    """)
+                    
+                    # Use a special style for the king when in check
+                    if square_widget.is_checked and piece.piece_type == chess.KING:
+                        # Make king clearly visible against the check highlight
+                        square_widget.setStyleSheet(square_widget.styleSheet() + f"""
+                            font-size: 40px; 
+                            color: {piece_color};
+                            font-weight: bold;
+                            margin: 2px;
+                            background-color: transparent;
+                        """)
+                    else:
+                        square_widget.setStyleSheet(square_widget.styleSheet() + f"""
+                            font-size: 40px; 
+                            color: {piece_color};
+                            font-weight: bold;
+                        """)
                 else:
                     square_widget.setText("")
+                    
 
 
         # Check for game over
@@ -1160,16 +1178,26 @@ class ChessBoard(QMainWindow):
             self.status_label.setText("AI error. Your turn.")
             self.turn = 'human'
 
-    def show_game_over_popup(self):
+    def show_game_over_popup(self, custom_message=None):
         """Show the game over popup with appropriate message and options"""
-        # Delete any existing popup first
-        if self.popup:
-            self.popup.close()
+        # Delete any existing popup first to prevent memory leaks and UI conflicts
+        if hasattr(self, 'popup') and self.popup:
+            try:
+                self.popup.close()
+                self.popup.deleteLater()
+            except Exception as e:
+                print(f"Error closing existing popup: {str(e)}")
             self.popup = None
-            
+                
         result = self.board.result()
         
-        if self.mode == "human_ai":
+        if custom_message:
+            # If a custom message was provided, use it
+            if self.mode == "human_ai":
+                self.popup = GameOverPopup(result, self, custom_message)
+            else:
+                self.popup = GameOverPopup(result, self, custom_message)
+        elif self.mode == "human_ai":
             self.popup = GameOverPopup(result, self)
         else:
             winner_text = ""
@@ -1220,9 +1248,9 @@ class ChessBoard(QMainWindow):
         self.main_splitter.setSizes([board_portion, sidebar_portion])
     
     def setup_undo_button(self):
-        """Set up the undo button - call this method from __init__"""
+        """Set up the undo button and resign button - call this method from __init__"""
         # Import here to avoid circular imports
-        from ui.components.controls import UndoButton
+        from ui.components.controls import UndoButton, ResignButton
         
         # Create undo button
         self.undo_button = UndoButton(self)
@@ -1242,12 +1270,23 @@ class ChessBoard(QMainWindow):
                             button_layout = subitem.widget().layout()
                             # Insert undo button at a good position (before reset)
                             button_layout.insertWidget(2, self.undo_button)  # Adjust index as needed
+                            
+                            # Connect resign button if it exists
+                            for k in range(button_layout.count()):
+                                btn_item = button_layout.itemAt(k)
+                                if btn_item and isinstance(btn_item.widget(), ResignButton):
+                                    btn_item.widget().clicked.connect(self.resign_game)
+                                    return True
                             return True
             
             # Fallback in case layout structure is different
             print("Couldn't find expected layout structure, using fallback method")
             if hasattr(self.control_panel, 'main_layout'):
                 self.control_panel.main_layout.addWidget(self.undo_button)
+                
+                # Try to find and connect the resign button
+                if hasattr(self.control_panel, 'resign_button'):
+                    self.control_panel.resign_button.clicked.connect(self.resign_game)
                 return True
                 
             return False
@@ -1465,3 +1504,94 @@ class ChessBoard(QMainWindow):
             print(f"Critical error in save_game_with_dialog: {str(e)}")
             traceback.print_exc()
             return False, None
+
+    def resign_game(self):
+        """Handle the player resigning from the game"""
+        try:
+            # Stop any ongoing AI processes
+            if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
+                if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
+                    self.ai_worker.terminate()
+                    self.ai_worker = None
+                    self.ai_computation_active = False
+                    
+            # Stop AI game if running
+            if hasattr(self, 'ai_game_running') and self.ai_game_running:
+                self.ai_game_running = False
+                if hasattr(self, 'ai_timer') and self.ai_timer.isActive():
+                    self.ai_timer.stop()
+                    
+            # Stop thinking indicator
+            if hasattr(self, 'thinking_indicator'):
+                self.thinking_indicator.stop_thinking()
+            
+            # Show confirmation dialog
+            confirmation = ResignConfirmationDialog(self)
+            if confirmation.exec_() == QDialog.Accepted:
+                # Handle resignation based on current game state and mode
+                if self.mode == "human_ai":
+                    # Set result based on who resigned (in human vs AI, the human always resigns)
+                    result = '0-1'  # Black (AI) wins
+                    if self.board.turn == chess.BLACK:
+                        result = '1-0'  # White (Human) wins - rare case where AI's turn is interrupted
+                    
+                    # Force the board into a game over state
+                    self.board.set_result(result)
+                    
+                    # Update the UI
+                    self.status_label.setText("You resigned. Game over.")
+                    
+                    # Show game over popup
+                    self.show_game_over_popup(custom_message="You resigned the game")
+                    
+                else:  # AI vs AI mode
+                    # Determine which AI was supposed to move next and award the win to the other
+                    result = '0-1'  # Black wins
+                    winner_text = "Game resigned. AI 2 (Black) Wins!"
+                    
+                    if self.turn == 'ai2':
+                        result = '1-0'  # White wins
+                        winner_text = "Game resigned. AI 1 (White) Wins!"
+                    
+                    # Force the board into a game over state
+                    self.board.set_result(result)
+                    
+                    # Update the UI
+                    self.status_label.setText("Game resigned")
+                    
+                    # Show game over popup
+                    self.show_game_over_popup(custom_message=winner_text)
+        
+        except Exception as e:
+            import traceback
+            print(f"Error in resign_game: {str(e)}")
+            traceback.print_exc()
+            QMessageBox.critical(self, "Error", f"Failed to resign game: {str(e)}")
+
+    def patch_board_for_resignation(self):
+        """Add the set_result method to the chess.Board class if not present"""
+        if not hasattr(chess.Board, 'set_result'):
+            def set_result(board, result):
+                """Force a game result without changing the board position.
+                This is used for resignation and similar game end scenarios."""
+                # Store the result for later retrieval
+                board._result = result
+                
+                # Override the is_game_over method to return True
+                original_is_game_over = board.is_game_over
+                def patched_is_game_over():
+                    return True
+                board.is_game_over = patched_is_game_over
+                
+                # Override the result method to return our stored result
+                original_result = board.result
+                def patched_result():
+                    return board._result
+                board.result = patched_result
+                
+                # Store original methods to be able to restore them if needed
+                board._original_is_game_over = original_is_game_over
+                board._original_result = original_result
+                
+            # Add the method to the chess.Board class
+            chess.Board.set_result = set_result

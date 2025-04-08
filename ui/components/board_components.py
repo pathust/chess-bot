@@ -151,10 +151,15 @@ class ChessSquare(QLabel):
                     # Draw the diamond
                     painter.drawPolygon(points)
                 
-                # Draw red highlight for check
+                # Draw red highlight for check - but make it semi-transparent
                 if self.is_checked:
-                    painter.setPen(QPen(QColor(Config.CHECK_COLOR), 3))
-                    painter.setBrush(QBrush(QColor(Config.CHECK_COLOR).lighter(180)))
+                    # Use semi-transparent color for the check highlight
+                    check_color = QColor(Config.CHECK_COLOR)
+                    check_color.setAlpha(150)  # Make it semi-transparent
+                    
+                    painter.setPen(QPen(check_color, 3))
+                    painter.setBrush(QBrush())  # No fill, just border
+                    
                     # Draw border around the entire square
                     border_padding = 2
                     painter.drawRect(

@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QLabel, QFrame
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtGui import QIcon
 
 class ControlButton(QPushButton):
     """Enhanced button with better visual feedback"""
@@ -29,6 +30,7 @@ class ControlButton(QPushButton):
             }}
             QPushButton:hover {{
                 background-color: {self._lighten_color(self.base_color, 1.1)};
+                box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2);
             }}
             QPushButton:pressed {{
                 background-color: {self._darken_color(self.base_color, 1.1)};
@@ -71,7 +73,7 @@ class EnhancedSlider(QWidget):
         title_container = QFrame()
         title_container.setStyleSheet("""
             QFrame {
-                background-color: #e8e8e8;
+                background-color: #34495e;
                 border-radius: 6px;
                 border: none;
             }
@@ -84,7 +86,7 @@ class EnhancedSlider(QWidget):
         title_label.setStyleSheet("""
             font-size: 12pt; 
             font-weight: bold; 
-            color: #333333;
+            color: white;
         """)
         title_layout.addWidget(title_label)
         layout.addWidget(title_container)
@@ -103,15 +105,15 @@ class EnhancedSlider(QWidget):
             }
             QSlider::groove:horizontal {
                 height: 8px;
-                background: #d0d0d0;
+                background: #3d566e;
                 border-radius: 4px;
             }
             QSlider::handle:horizontal {
                 background: #2196F3;
-                width: 18px;
-                height: 18px;
-                margin: -5px 0;
-                border-radius: 9px;
+                width: 20px;
+                height: 20px;
+                margin: -6px 0;
+                border-radius: 10px;
                 border: 1px solid #1976D2;
             }
             QSlider::sub-page:horizontal {
@@ -122,14 +124,14 @@ class EnhancedSlider(QWidget):
         self.slider.valueChanged.connect(self._emit_value_changed)
         layout.addWidget(self.slider)
         
-        # Add min/max labels with IMPROVED CONTRAST
+        # Add min/max labels with improved contrast
         labels_layout = QHBoxLayout()
         min_text = QLabel(min_label)
-        min_text.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")  # Changed to white for better contrast
+        min_text.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")
         
         max_text = QLabel(max_label)
         max_text.setAlignment(Qt.AlignRight)
-        max_text.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")  # Changed to white for better contrast
+        max_text.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")
         
         labels_layout.addWidget(min_text)
         labels_layout.addWidget(max_text)
@@ -143,3 +145,38 @@ class EnhancedSlider(QWidget):
     
     def setValue(self, value):
         self.slider.setValue(value)
+
+class UndoButton(QPushButton):
+    """Button specifically for the undo move functionality"""
+    def __init__(self, parent=None):
+        super().__init__("↩ Undo", parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(50)
+        self.setToolTip("Undo the last move")
+        self.updateStyle()
+    
+    def updateStyle(self):
+        """Set the button style"""
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 8px;
+                border: none;
+                text-align: center;
+            }
+            QPushButton:hover {
+                background-color: #a66bbe;
+                box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2);
+            }
+            QPushButton:pressed {
+                background-color: #8e44ad;
+            }
+            QPushButton:disabled {
+                background-color: #bbbbbb;
+                color: #dddddd;
+            }
+        """)

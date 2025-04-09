@@ -2,15 +2,16 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QDialog,
     QSplitter, QFrame
 )
-from PyQt5.QtCore import Qt, QPoint, QTimer
+from PyQt5.QtCore import Qt, QPoint, QTimer, QPropertyAnimation
 import chess
 import sys
 import traceback
 
+import os
 from ui.components.board_components import ChessSquare, ThinkingIndicator
 from ui.components.history import MoveHistoryWidget
-from ui.components.sidebar import AIControlPanel
-from ui.components.popups import PawnPromotionDialog, GameOverPopup
+from ui.components.sidebar import AIControlPanel, SavedGameManager
+from ui.components.popups import PawnPromotionDialog, GameOverPopup, SaveGameDialog
 from ui.components.animations import AnimatedLabel
 from ui.workers import AIWorker
 
@@ -20,7 +21,7 @@ def exception_hook(exctype, value, tb):
     traceback.print_tb(tb)
 
 class ChessBoard(QMainWindow):
-    def __init__(self, mode="human_ai", parent_app=None):
+    def __init__(self, mode="human_ai", parent_app=None, load_game_data=None):
         super().__init__()
         
         self.popup = None
@@ -206,6 +207,7 @@ class ChessBoard(QMainWindow):
         self.control_panel.pause_button.clicked.connect(self.pause_ai_game)
         self.control_panel.reset_button.clicked.connect(self.reset_game)
         self.control_panel.home_button.clicked.connect(self.return_to_home)
+        self.control_panel.save_button.clicked.connect(self.save_game)  # Make sure this line exists
         
         # Disable pause button initially
         self.control_panel.pause_button.setEnabled(False)
@@ -255,6 +257,132 @@ class ChessBoard(QMainWindow):
         self.update_board()
 
         sys.excepthook = exception_hook
+
+        if load_game_data:
+            self.load_game_state(load_game_data)
+        else:
+            # Initialize the board
+            self.update_board()
+
+        if load_game_data:
+            self.load_game_state(load_game_data)
+        else:
+            # Initialize the board
+            self.update_board()
+
+        # Add undo button functionality
+        self.setup_undo_button()  # Add this line here
+
+    def save_game(self):
+        """Save the current game state to a file with improved error handling"""
+        try:
+            # Pause the game if it's running
+            was_running = self.ai_game_running
+            if was_running:
+                self.pause_ai_game()
+            
+            # Call the SavedGameManager to save the game
+            try:
+                success, filepath = SavedGameManager.save_game(
+                    self.board, 
+                    self.mode, 
+                    self.turn,
+                    self.last_move_from,
+                    self.last_move_to
+                )
+                
+                if success:
+                    filename = os.path.basename(filepath)
+                    QMessageBox.information(self, "Game Saved", 
+                                        f"Game successfully saved to {filename}")
+                else:
+                    if filepath is not None:  # User canceled
+                        QMessageBox.warning(self, "Save Canceled", 
+                                        "Game was not saved.")
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", 
+                                f"An error occurred while saving the game: {str(e)}")
+                print(f"Error saving game: {str(e)}")
+                traceback.print_exc()
+            
+            # Resume the game if it was running
+            if was_running:
+                try:
+                    self.start_ai_game()
+                except Exception as e:
+                    QMessageBox.warning(self, "Resuming Game", 
+                                    f"Couldn't resume the game: {str(e)}\nClick Start to continue.")
+                    print(f"Error resuming game: {str(e)}")
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Critical Error", 
+                            f"A critical error occurred: {str(e)}")
+            print(f"Critical error in save_game: {str(e)}")
+            traceback.print_exc()
+        
+    def load_game_state(self, game_data):
+        """Load a saved game state"""
+        try:
+            # Setup the board with the saved FEN position
+            self.board = chess.Board(game_data['fen'])
+            
+            # Set the mode and turn
+            self.mode = game_data['mode']
+            self.turn = game_data['turn']
+            
+            # Set the last move for highlighting
+            self.last_move_from = game_data.get('last_move_from')
+            self.last_move_to = game_data.get('last_move_to')
+            
+            # Rebuild move history
+            self.move_history.clear_history()
+            temp_board = chess.Board()
+            for i, move_uci in enumerate(game_data['move_history']):
+                move = chess.Move.from_uci(move_uci)
+                from_square = chess.square_name(move.from_square)
+                to_square = chess.square_name(move.to_square)
+                piece = temp_board.piece_at(move.from_square)
+                
+                is_capture = temp_board.is_capture(move)
+                is_check = False  # We'll determine this after making the move
+                
+                # Make the move on our temporary board
+                temp_board.push(move)
+                is_check = temp_board.is_check()
+                
+                # Determine if it's castling
+                is_castling = (piece and piece.piece_type == chess.KING and 
+                            abs(move.from_square % 8 - move.to_square % 8) > 1)
+                
+                # Add to move history
+                self.move_history.add_move(
+                    piece,
+                    from_square,
+                    to_square,
+                    "White" if i % 2 == 0 else "Black",
+                    is_capture,
+                    is_check,
+                    move.promotion,
+                    is_castling
+                )
+            
+            # Update the board display
+            self.update_board()
+            
+            # Update status message
+            if self.mode == "human_ai":
+                if self.turn == 'human':
+                    self.status_label.setText("Your turn")
+                else:
+                    self.status_label.setText("AI is thinking...")
+            else:
+                self.status_label.setText("Press 'Start' to continue AI vs AI game")
+            
+            return True
+        except Exception as e:
+            print(f"Error loading game: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Could not load game: {str(e)}")
+            return False
     
     def initialize_piece_symbols(self):
         """Create enhanced chess piece symbols with better visibility and style"""
@@ -276,22 +404,110 @@ class ChessBoard(QMainWindow):
         return piece_symbols
     
     def return_to_home(self):
-        """Return to the start screen"""
-        # Cancel any AI computation before closing
-        if self.ai_worker and self.ai_worker.isRunning():
-            self.ai_worker.terminate()
-            self.ai_worker = None
+        """Return to the start screen with improved robustness"""
+        try:
+            # Force stop any running processes or timers
+            if hasattr(self, 'ai_timer') and self.ai_timer.isActive():
+                self.ai_timer.stop()
+            
+            # Cancel any AI computation
+            if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
+                try:
+                    self.ai_worker.terminate()
+                    self.ai_worker.wait(300)  # Wait for termination with timeout
+                except Exception as e:
+                    print(f"Error terminating AI worker: {str(e)}")
+                finally:
+                    self.ai_worker = None
+            
+            # Reset AI computation flag regardless of state
             self.ai_computation_active = False
             
-        # Properly clean up the popup reference
-        if hasattr(self, 'popup') and self.popup:
-            self.popup.close()
-            self.popup.deleteLater()  # Ensure Qt properly destroys the dialog
-            self.popup = None
+            # Stop any ongoing animations
+            if hasattr(self, 'animated_pieces'):
+                for piece_id in list(self.animated_pieces.keys()):
+                    try:
+                        animated_piece = self.animated_pieces[piece_id]
+                        if animated_piece.animation.state() == QPropertyAnimation.Running:
+                            animated_piece.animation.stop()
+                        animated_piece.hide()
+                    except Exception as e:
+                        print(f"Error cleaning up animation: {str(e)}")
+                self.animated_pieces.clear()
             
-        self.close()
-        if self.parent_app:
-            self.parent_app.show_start_screen()
+            # Stop thinking indicator
+            if hasattr(self, 'thinking_indicator'):
+                self.thinking_indicator.stop_thinking()
+            
+            # Force set AI game to not running
+            self.ai_game_running = False
+            
+            # Clean up any popup
+            if hasattr(self, 'popup') and self.popup:
+                try:
+                    self.popup.close()
+                    self.popup.deleteLater()
+                except Exception as e:
+                    print(f"Error closing popup: {str(e)}")
+                finally:
+                    self.popup = None
+            
+            # Ask if user wants to save game
+            if not self.board.is_game_over() and len(self.board.move_stack) > 0:
+                try:
+                    reply = QMessageBox.question(
+                        self, 
+                        "Save Game", 
+                        "Do you want to save your game before leaving?",
+                        QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+                    )
+                    
+                    if reply == QMessageBox.Yes:
+                        try:
+                            success, _ = SavedGameManager.save_game(
+                                self.board, 
+                                self.mode, 
+                                self.turn,
+                                self.last_move_from,
+                                self.last_move_to
+                            )
+                            if not success:
+                                return  # Cancel the return to home if save was canceled
+                        except Exception as e:
+                            print(f"Error saving game: {str(e)}")
+                            msgBox = QMessageBox.warning(
+                                self, 
+                                "Save Failed", 
+                                f"Failed to save game: {str(e)}\n\nContinue returning home?",
+                                QMessageBox.Yes | QMessageBox.No
+                            )
+                            if msgBox == QMessageBox.No:
+                                return
+                    elif reply == QMessageBox.Cancel:
+                        return  # Cancel the return to home
+                except Exception as e:
+                    print(f"Error during save prompt: {str(e)}")
+            
+            # Finally, return to home screen
+            if self.parent_app:
+                # Queue the show_start_screen call to happen after this event has finished processing
+                QTimer.singleShot(0, self.parent_app.show_start_screen)
+            
+            # Close this window
+            self.close()
+            
+        except Exception as e:
+            # Last resort error handling
+            import traceback
+            print(f"Critical error in return_to_home: {str(e)}")
+            traceback.print_exc()
+            QMessageBox.critical(self, "Error", 
+                                f"An error occurred while returning to home screen: {str(e)}")
+            
+            # Force return to home even after error
+            if self.parent_app:
+                self.parent_app.show_start_screen()
+                self.close()
         
     def update_move_speed(self, value):
         """Update the AI move animation speed"""
@@ -957,6 +1173,7 @@ class ChessBoard(QMainWindow):
         # Connect popup signals
         self.popup.play_again_signal.connect(self.reset_game)
         self.popup.return_home_signal.connect(self.return_to_home)
+        self.popup.save_game_signal.connect(self.save_game_with_dialog)
         
         self.popup.exec_()
 
@@ -989,3 +1206,250 @@ class ChessBoard(QMainWindow):
         
         # Apply the new sizes
         self.main_splitter.setSizes([board_portion, sidebar_portion])
+    
+    def setup_undo_button(self):
+        """Set up the undo button - call this method from __init__"""
+        # Import here to avoid circular imports
+        from ui.components.controls import UndoButton
+        
+        # Create undo button
+        self.undo_button = UndoButton(self)
+        self.undo_button.clicked.connect(self.undo_move)
+        
+        # Add button to control panel - find the right layout
+        try:
+            # Find button container in the control panel
+            for i in range(self.control_panel.widget().layout().count()):
+                item = self.control_panel.widget().layout().itemAt(i)
+                if isinstance(item, QHBoxLayout):
+                    # Check if this is the responsive layout
+                    for j in range(item.count()):
+                        subitem = item.itemAt(j)
+                        if isinstance(subitem.widget(), QWidget) and subitem.widget().layout() and isinstance(subitem.widget().layout(), QVBoxLayout):
+                            # This should be the button container
+                            button_layout = subitem.widget().layout()
+                            # Insert undo button at a good position (before reset)
+                            button_layout.insertWidget(2, self.undo_button)  # Adjust index as needed
+                            return True
+            
+            # Fallback in case layout structure is different
+            print("Couldn't find expected layout structure, using fallback method")
+            if hasattr(self.control_panel, 'main_layout'):
+                self.control_panel.main_layout.addWidget(self.undo_button)
+                return True
+                
+            return False
+        except Exception as e:
+            print(f"Error adding undo button: {e}")
+            return False
+
+    def undo_move(self):
+        """Undo the last move made in the game"""
+        try:
+            # Check if there are moves to undo
+            if len(self.board.move_stack) == 0:
+                self.status_label.setText("No moves to undo")
+                return
+                
+            # Store the current board state before undoing
+            previous_fen = self.board.fen()
+            last_move = self.board.pop()
+            
+            # Update the move history
+            self.update_move_history_after_undo()
+            
+            # Handle the turn logic based on game mode
+            if self.mode == "human_ai":
+                # If it was the AI's move, go back to human's turn
+                if self.turn == 'ai':
+                    self.turn = 'human'
+                    # Clear any AI worker if it's running
+                    if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
+                        if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
+                            self.ai_worker.terminate()
+                            self.ai_worker = None
+                            self.ai_computation_active = False
+                    # Stop thinking indicator
+                    if hasattr(self, 'thinking_indicator'):
+                        self.thinking_indicator.stop_thinking()
+                # If we're in human vs AI and we undo a human move, we need to undo the AI move too
+                # (if there's still a move to undo)
+                elif len(self.board.move_stack) > 0 and self.turn == 'human':
+                    # This will undo the AI's move
+                    previous_fen = self.board.fen()
+                    self.board.pop()
+                    # Update the move history again
+                    self.update_move_history_after_undo()
+            else:  # AI vs AI mode
+                # Simply toggle between AI1 and AI2
+                self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                
+                # If the AI game is running, pause it to avoid confusion
+                if hasattr(self, 'ai_game_running') and self.ai_game_running:
+                    self.pause_ai_game()
+                    
+            # Update last move highlighting
+            if len(self.board.move_stack) > 0:
+                last_move_uci = self.board.move_stack[-1].uci()
+                from_square = chess.parse_square(last_move_uci[:2])
+                to_square = chess.parse_square(last_move_uci[2:4])
+                
+                # Convert to UI coordinates (0-7, 0-7)
+                self.last_move_from = (7 - chess.square_rank(from_square), chess.square_file(from_square))
+                self.last_move_to = (7 - chess.square_rank(to_square), chess.square_file(to_square))
+            else:
+                # No previous moves, clear highlighting
+                self.last_move_from = None
+                self.last_move_to = None
+                
+            # Update the board display
+            self.update_board()
+            
+            # Notify the user about the undo
+            self.status_label.setText("Move undone!")
+            QTimer.singleShot(1500, self.update_status_after_undo)
+            
+        except Exception as e:
+            import traceback
+            print(f"Error in undo_move: {str(e)}")
+            traceback.print_exc()
+            self.status_label.setText(f"Could not undo move")
+
+    def update_status_after_undo(self):
+        """Update the status message after an undo"""
+        if self.board.is_game_over():
+            return
+            
+        if self.mode == "human_ai":
+            if self.turn == 'human':
+                self.status_label.setText("Your turn")
+            else:
+                self.status_label.setText("AI's turn")
+        else:  # AI vs AI mode
+            if not hasattr(self, 'ai_game_running') or not self.ai_game_running:
+                self.status_label.setText("Press 'Start' to continue AI vs AI game")
+
+    def update_move_history_after_undo(self):
+        """Update the move history display after an undo operation"""
+        try:
+            if not hasattr(self, 'move_history'):
+                return
+                
+            # Get the current count of items in the move list
+            move_list = self.move_history.move_list
+            if not move_list:
+                print("Move list is not available")
+                return
+                
+            count = move_list.count()
+            
+            if count == 0:
+                return
+                
+            # Get the last item in the list
+            current_item = move_list.item(count - 1)
+            if current_item is None:
+                return
+                
+            current_text = current_item.text()
+            
+            # Check if the item contains both white and black moves
+            if " " in current_text:
+                try:
+                    # Remove just the black move part (keep white's move)
+                    white_move = current_text.split(" ")[0]
+                    current_item.setText(white_move)
+                    # Remove any formatting that was added for combined moves
+                    font = current_item.font()
+                    font.setBold(False)
+                    current_item.setFont(font)
+                except Exception as e:
+                    print(f"Error formatting move text: {str(e)}")
+            else:
+                try:
+                    # Remove the entire item if it's just a white move
+                    move_list.takeItem(count - 1)
+                except Exception as e:
+                    print(f"Error removing move item: {str(e)}")
+        except Exception as e:
+            import traceback
+            print(f"Error updating move history after undo: {str(e)}")
+            traceback.print_exc()
+        
+    def save_game_with_dialog(self):
+        """Save the current game state to a file with a dialog for metadata"""
+        try:
+            # Pause the game if it's running
+            was_running = self.ai_game_running
+            if was_running:
+                self.pause_ai_game()
+            
+            # Show the enhanced save dialog
+            save_dialog = SaveGameDialog(self)
+            if save_dialog.exec_() == QDialog.Accepted:
+                game_name = save_dialog.get_game_name()
+                game_notes = save_dialog.get_game_notes()
+                
+                # Prepare game data with metadata
+                game_data = {
+                    'fen': self.board.fen(),
+                    'mode': self.mode,
+                    'turn': self.turn,
+                    'last_move_from': self.last_move_from,
+                    'last_move_to': self.last_move_to,
+                    'move_history': [move.uci() for move in self.board.move_stack],
+                    'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'game_name': game_name,
+                    'game_notes': game_notes
+                }
+                
+                # Call the SavedGameManager to save the game
+                try:
+                    # Open file dialog to select save location
+                    file_path, _ = QFileDialog.getSaveFileName(
+                        self, 
+                        "Save Game", 
+                        os.path.expanduser("~/Desktop"), 
+                        "Chess Game Files (*.chess);;All Files (*)"
+                    )
+                    
+                    if file_path:
+                        # Add .chess extension if not provided
+                        if not file_path.endswith('.chess'):
+                            file_path += '.chess'
+                            
+                        # Save the data to the file
+                        with open(file_path, 'w') as f:
+                            json.dump(game_data, f, indent=4)
+                        
+                        QMessageBox.information(self, "Game Saved", 
+                                        f"Game \"{game_name}\" successfully saved to {os.path.basename(file_path)}")
+                        return True, file_path
+                    else:
+                        QMessageBox.warning(self, "Save Canceled", "Game was not saved.")
+                        return False, None
+                        
+                except Exception as e:
+                    QMessageBox.critical(self, "Save Error", 
+                                    f"An error occurred while saving the game: {str(e)}")
+                    print(f"Error saving game: {str(e)}")
+                    traceback.print_exc()
+                    return False, None
+                
+            else:
+                # User canceled save dialog
+                if was_running:
+                    try:
+                        self.start_ai_game()
+                    except Exception as e:
+                        QMessageBox.warning(self, "Resuming Game", 
+                                        f"Couldn't resume the game: {str(e)}\nClick Start to continue.")
+                        print(f"Error resuming game: {str(e)}")
+                return False, None
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Critical Error", 
+                            f"A critical error occurred: {str(e)}")
+            print(f"Critical error in save_game_with_dialog: {str(e)}")
+            traceback.print_exc()
+            return False, None

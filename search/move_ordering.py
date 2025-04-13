@@ -1,8 +1,12 @@
 import chess
+import numpy as np
 from evaluation.piece_square_table import PieceSquareTable
 from evaluation.evaluation import Evaluation
 
 class MoveOrdering:
+
+    __path__=""
+
     max_move_count = 218
     square_controlled_by_opponent_pawn_penalty = 350
     captured_piece_value_multiplier = 100
@@ -22,6 +26,30 @@ class MoveOrdering:
         self.invalid_move = chess.Move.null()
         self.killer_moves = [Killers() for _ in range(self.max_killer_move_ply)]
         self.history = [[[0] * 64 for _ in range(64)] for _ in range(2)]
+
+    def load_weights(__path__):
+        order_weight=OrderWeight.get_instance()
+
+        square_controlled_by_opponent_pawn_penalty = order_weight.square_controlled_by_opponent_pawn_penalty
+        captured_piece_value_multiplier = order_weight.captured_piece_value_multiplier
+
+        max_killer_move_ply = order_weight.max_killer_move_ply
+        hash_move_score = order_weight.hash_move_score
+        winning_capture_bias = order_weight.winning_capture_bias
+        promote_bias = order_weight.promote_bias
+        killer_bias = order_weight.killer_bias
+        losing_capture_bias = order_weight.losing_capture_bias
+
+    def update_weights(self, weights:np.array):
+        square_controlled_by_opponent_pawn_penalty = weights[0]
+        captured_piece_value_multiplier = weights[1]
+
+        max_killer_move_ply = weights[2]
+        hash_move_score = weights[3]
+        winning_capture_bias = weights[4]
+        promote_bias = weights[5]
+        killer_bias = weights[6]
+        losing_capture_bias = weights[7]
 
     def clear_history(self):
         self.history = [[[0] * 64 for _ in range(64)] for _ in range(2)]
@@ -63,7 +91,7 @@ class MoveOrdering:
             move_piece = board.piece_at(start_square)
             if not move_piece:
                 self.move_scores[i] = self.regular_bias
-                continue
+                continue # phucnote move_piece is legal move so it never on this branch
 
             move_piece_type = move_piece.piece_type
             captured_piece = board.piece_at(target_square)
@@ -204,3 +232,68 @@ class Killers:
     def match(self, move):
         """Check if a move matches either of the stored killer moves"""
         return move == self.move_a or move == self.move_b
+
+
+
+import json
+class OrderWeight:
+    def __new__(cls):
+        if not cls._instance:
+            cls._instance = super(OrderWeight, cls).__new__(cls)
+        return cls._instance
+    
+    def __init__(self): #maybe can change __path__ out the funcfunc
+        if not hasattr(self, 'initialized'):  # Kiểm tra nếu chưa khởi tạo
+            thousand = 1000
+            self.square_controlled_by_opponent_pawn_penalty = 350
+            self.captured_piece_value_multiplier = 100
+
+            self.max_killer_move_ply = 32
+            self.hash_move_score = 100 * thousand
+            self.winning_capture_bias = 8 * thousand
+            self.promote_bias = 6 * thousand
+            self.killer_bias = 4 * thousand
+            self.losing_capture_bias = 2 * thousand
+
+    @classmethod
+    def get_instance(cls):
+        if not cls._instance:
+            cls._instance = OrderWeight()  # Chỉ tạo đối tượng khi chưa có instance
+        return cls._instance
+    
+    def to_dict(self):
+        return {
+            "square_controlled_by_opponent_pawn_penalty": self.square_controlled_by_opponent_pawn_penalty,
+            "captured_piece_value_multiplier": self.captured_piece_value_multiplier,
+            "max_killer_move_ply": self.max_killer_move_ply,
+
+            "hash_move_score": self.hash_move_score,
+            "winning_capture_bias": self.winning_capture_bias,
+            "promote_bias": self.promote_bias,
+            "killer_bias": self.killer_bias,
+            "losing_capture_bias": self.losing_capture_bias,
+        }
+    
+    def from_dict(self, data):
+        self.square_controlled_by_opponent_pawn_penalty = data.get("square_controlled_by_opponent_pawn_penalty", 350)
+        self.captured_piece_value_multiplier = data.get("captured_piece_value_multiplier", 100)
+        self.max_killer_move_ply = data.get("max_killer_move_ply", 32)
+
+        self.hash_move_score = data.get("hash_move_score", 100000)
+        self.winning_capture_bias = data.get("winning_capture_bias", 8000)
+        self.promote_bias = data.get("promote_bias", 6000)
+        self.killer_bias = data.get("killer_bias", 4000)
+        self.losing_capture_bias = data.get("losing_capture_bias", 2000)
+
+    def save_to_json(self, __path__):
+        with open(__path__, "w") as f:
+            json.dump(self.to_dict(), f)
+
+    def load_from_json(self, __path__):
+        try:
+            with open(__path__, "r") as f:
+                data = json.load(f)
+                self.from_dict(data)
+        except Exception:
+            # Nếu lỗi (ví dụ file không tồn tại)
+            print("không tìm được bản ghi weights move order, dùng trọng số gốc")

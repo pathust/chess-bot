@@ -6,6 +6,8 @@ from search.repetition_table import RepetitionTable
 from search.transposition_table import TranspositionTable
 from evaluation.evaluation import Evaluation
 from nnue_evaluation import NNUEEvaluation
+import threading
+
 class Searcher:
     # Constants
     transposition_table_size_mb = 64
@@ -14,7 +16,7 @@ class Searcher:
     immediate_mate_score = 100000
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
-
+    max_depth:int = 5
     def __init__(self, board: chess.Board, use_nnue=False):
         self.board = board
         self.current_depth = 0
@@ -37,6 +39,11 @@ class Searcher:
         self.transposition_table = TranspositionTable(board, self.transposition_table_size_mb)
         self.move_orderer = MoveOrdering(self.transposition_table)
         self.repetition_table = RepetitionTable()
+
+        #for move order can delete latter
+        self.lock_for_node_searchered = threading.Lock()
+        self.node_searched = 0
+        self.node_searched_lastime=0
 
         # Run a depth 1 search for JIT warm-up
         self.search(1, 0, self.negative_infinity, self.positive_infinity)
@@ -77,7 +84,7 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(1, 257):  # 256 is enough for any practical chess position
+        for search_depth in range(1, self.max_depth+1):  # 256 is enough for any practical chess position
             print(search_depth)
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
@@ -189,6 +196,8 @@ class Searcher:
             ply_from_root
         )
 
+        
+
         # Check for checkmate or stalemate
         if not legal_moves:
             if self.board.is_check():
@@ -254,6 +263,7 @@ class Searcher:
 
             # Perform full-depth search if needed
             if needs_full_search:
+                self.increase_node_searched()#for move order can delete later
                 eval_score = -self.search(
                     ply_remaining - 1 + extension,
                     ply_from_root + 1,
@@ -419,6 +429,17 @@ class Searcher:
     def get_transposition_table(self):
         """Return the transposition table"""
         return self.transposition_table
+    
+    #for move order can delete latter
+    def increase_node_searched(self ):
+        with self.lock_for_node_searchered:  # tự động acquire và release
+            self.node_searched += 1
+
+    def get_node_searchered(self):
+        temp = self.node_searched-self.node_searched_lastime
+        self.node_searched_lastime=self.node_searched
+        return temp
+
 
 
 class SearchDiagnostics:

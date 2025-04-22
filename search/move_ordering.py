@@ -27,29 +27,38 @@ class MoveOrdering:
         self.killer_moves = [Killers() for _ in range(self.max_killer_move_ply)]
         self.history = [[[0] * 64 for _ in range(64)] for _ in range(2)]
 
-    def load_weights(__path__):
+    def load_weights(self,__path__):
         order_weight=OrderWeight.get_instance()
 
-        square_controlled_by_opponent_pawn_penalty = order_weight.square_controlled_by_opponent_pawn_penalty
-        captured_piece_value_multiplier = order_weight.captured_piece_value_multiplier
+        MoveOrdering.square_controlled_by_opponent_pawn_penalty = order_weight.square_controlled_by_opponent_pawn_penalty
+        MoveOrdering.captured_piece_value_multiplier = order_weight.captured_piece_value_multiplier
+        MoveOrdering.hash_move_score = order_weight.hash_move_score
+        MoveOrdering.winning_capture_bias = order_weight.winning_capture_bias
+        MoveOrdering.promote_bias = order_weight.promote_bias
+        MoveOrdering.killer_bias = order_weight.killer_bias
+        MoveOrdering.losing_capture_bias = order_weight.losing_capture_bias
 
-        max_killer_move_ply = order_weight.max_killer_move_ply
-        hash_move_score = order_weight.hash_move_score
-        winning_capture_bias = order_weight.winning_capture_bias
-        promote_bias = order_weight.promote_bias
-        killer_bias = order_weight.killer_bias
-        losing_capture_bias = order_weight.losing_capture_bias
+    def save_weights(self,__path__):
+        order_weight=OrderWeight.get_instance()
+
+        order_weight.square_controlled_by_opponent_pawn_penalty = MoveOrdering.square_controlled_by_opponent_pawn_penalty
+        order_weight.captured_piece_value_multiplier = MoveOrdering.captured_piece_value_multiplier
+        order_weight.hash_move_score = MoveOrdering.hash_move_score
+        order_weight.winning_capture_bias = MoveOrdering.winning_capture_bias
+        order_weight.promote_bias = MoveOrdering.promote_bias
+        order_weight.killer_bias = MoveOrdering.killer_bias
+        order_weight.losing_capture_bias = MoveOrdering.losing_capture_bias
+        order_weight.save_to_json(__path__=__path__)
 
     def update_weights(self, weights:np.array):
-        square_controlled_by_opponent_pawn_penalty = weights[0]
-        captured_piece_value_multiplier = weights[1]
+        MoveOrdering.square_controlled_by_opponent_pawn_penalty = weights[0]
+        MoveOrdering.captured_piece_value_multiplier = weights[1]
 
-        max_killer_move_ply = weights[2]
-        hash_move_score = weights[3]
-        winning_capture_bias = weights[4]
-        promote_bias = weights[5]
-        killer_bias = weights[6]
-        losing_capture_bias = weights[7]
+        MoveOrdering.hash_move_score = weights[2]
+        MoveOrdering.winning_capture_bias = weights[3]
+        MoveOrdering.promote_bias = weights[4]
+        MoveOrdering.killer_bias = weights[5]
+        MoveOrdering.losing_capture_bias = weights[6]
 
     def clear_history(self):
         self.history = [[[0] * 64 for _ in range(64)] for _ in range(2)]
@@ -237,6 +246,7 @@ class Killers:
 
 import json
 class OrderWeight:
+    _instance = None  # Khai báo _instance là thuộc tính tĩnh và khởi tạo là None
     def __new__(cls):
         if not cls._instance:
             cls._instance = super(OrderWeight, cls).__new__(cls)
@@ -248,7 +258,6 @@ class OrderWeight:
             self.square_controlled_by_opponent_pawn_penalty = 350
             self.captured_piece_value_multiplier = 100
 
-            self.max_killer_move_ply = 32
             self.hash_move_score = 100 * thousand
             self.winning_capture_bias = 8 * thousand
             self.promote_bias = 6 * thousand
@@ -265,7 +274,6 @@ class OrderWeight:
         return {
             "square_controlled_by_opponent_pawn_penalty": self.square_controlled_by_opponent_pawn_penalty,
             "captured_piece_value_multiplier": self.captured_piece_value_multiplier,
-            "max_killer_move_ply": self.max_killer_move_ply,
 
             "hash_move_score": self.hash_move_score,
             "winning_capture_bias": self.winning_capture_bias,
@@ -277,7 +285,6 @@ class OrderWeight:
     def from_dict(self, data):
         self.square_controlled_by_opponent_pawn_penalty = data.get("square_controlled_by_opponent_pawn_penalty", 350)
         self.captured_piece_value_multiplier = data.get("captured_piece_value_multiplier", 100)
-        self.max_killer_move_ply = data.get("max_killer_move_ply", 32)
 
         self.hash_move_score = data.get("hash_move_score", 100000)
         self.winning_capture_bias = data.get("winning_capture_bias", 8000)

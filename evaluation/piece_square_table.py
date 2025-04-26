@@ -1,6 +1,12 @@
 import chess
+import json
+import numpy as np
+
+
 
 class PieceSquareTable:
+
+    path="search/piece_square_weight.json"
     # Các bảng điểm cho từng quân cờ
     pawns = [
          0,   0,   0,   0,   0,   0,   0,   0,
@@ -90,8 +96,7 @@ class PieceSquareTable:
         -50, -30, -30, -30, -30, -30, -30, -50
     ]
 
-    # Lưu trữ bảng điểm cho từng quân cờ
-    tables = []
+    tables = [pawns,pawns_end,rooks,knights,bishops,queens,king_start,king_end]
 
     @staticmethod
     def read(table, square: int, is_white: bool):
@@ -122,3 +127,43 @@ class PieceSquareTable:
     def piece_square_value(piece, square):
         """Trả về giá trị của một quân cờ ở một ô cụ thể"""
         return PieceSquareTable.tables[piece][square]
+    
+    @staticmethod
+    def update(weights:np.array):
+        """update giá trị từ array"""
+        for i, table in enumerate(PieceSquareTable.tables):
+            for j in range(64):
+                index = i*64 +j
+                PieceSquareTable.tables[i][j] =weights[index]
+
+    @staticmethod
+    def tables_to_array():
+        # Kết hợp tất cả các bảng thành một mảng 1D numpy array
+        return np.array([value for table in PieceSquareTable.tables for value in table])
+    
+    @staticmethod
+    def to_dict():
+        """Chuyển tables thành list các dict dạng vị trí(theo kiểu bản cờ vd a1, g5,...): value,"""
+        return [
+            {chess.square_name(i): table[i] for i in range(64)}
+            for table in PieceSquareTable.tables
+        ]
+
+    @staticmethod
+    def save_to_json(path):
+        """Lưu tables ra file JSON"""
+        data = PieceSquareTable.to_dict()
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    @staticmethod
+    def load_from_json():
+        """Load tables từ file JSON"""
+        with open(PieceSquareTable.path, 'r') as f:
+            data = json.load(f)
+        PieceSquareTable.tables = [
+            [table[chess.square_name(i)] for i in range(64)]
+            for table in data
+        ]
+    
+PieceSquareTable.save_to_json("test.json")

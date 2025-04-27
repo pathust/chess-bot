@@ -18,6 +18,7 @@ class Evaluation:
     def __init__(self):
         self.white_eval = EvaluationData()
         self.black_eval = EvaluationData()
+        PieceSquareTable.load_from_json()
 
     def evaluate(self, board: chess.Board) -> int:
         white_eval = self.white_eval

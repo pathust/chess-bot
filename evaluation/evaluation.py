@@ -22,7 +22,9 @@ class Evaluation:
     def __init__(self):
         self.white_eval = EvaluationData()
         self.black_eval = EvaluationData()
-        PieceSquareTable.load_from_json()
+        #turn of for GA
+        #PieceSquareTable.load_from_json()
+        #Evaluation.load_from_json(Evaluation.path)
 
     def evaluate(self, board: chess.Board) -> int:
         white_eval = self.white_eval
@@ -389,7 +391,7 @@ class Evaluation:
             Evaluation.passed_pawn_bonuses = data["passed_pawn_bonuses"]
             Evaluation.isolated_pawn_penalty_by_count = data["isolated_pawn_penalty_by_count"]
         except Exception:
-            print("co loi trong load file PieceSquareTable")
+            print("co loi trong load file Evaluation")
 
 
 class MaterialInfo:

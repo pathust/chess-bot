@@ -1,17 +1,21 @@
 import chess
-from evaluation.piece_square_table import PieceSquareTable
-from evaluation.precomputed_evaluation_data import PrecomputedEvaluationData
+import numpy as np
+import json
+from piece_square_table import PieceSquareTable
+from precomputed_evaluation_data import PrecomputedEvaluationData
+
 
 class Evaluation:
+    path="evaluation/evaluation_weights.json"
     pawn_value = 100
     knight_value = 300
     bishop_value = 320
     rook_value = 500
     queen_value = 900
 
+    king_pawn_shield_scores = [4, 7, 4, 3, 6, 3]
     passed_pawn_bonuses = [0, 120, 80, 50, 30, 15, 15]
     isolated_pawn_penalty_by_count = [0, -10, -25, -50, -75, -75, -75, -75, -75]
-    king_pawn_shield_scores = [4, 7, 4, 3, 6, 3]
 
     endgame_material_start = rook_value * 2 + bishop_value + knight_value
 
@@ -312,6 +316,81 @@ class Evaluation:
                 adjacent_files.add(chess.square(file_index + 1, rank))
 
         return adjacent_files
+    @staticmethod
+    def update(weights:np.array):
+        """update giá trị từ array"""
+        base_index=64*8
+
+        Evaluation.pawn_value = weights[base_index]
+        Evaluation.knight_value = weights[base_index+1]
+        Evaluation.bishop_value = weights[base_index+2]
+        Evaluation.rook_value = weights[base_index+3]
+        Evaluation.queen_value = weights[base_index+4]
+
+        Evaluation.king_pawn_shield_scores = weights[base_index +5 : base_index + 11].tolist()
+        Evaluation.passed_pawn_bonuses = weights[base_index +11 : base_index + 18].tolist()
+        Evaluation.isolated_pawn_penalty_by_count = weights[base_index + 18 : base_index + 27].tolist()
+
+
+    @staticmethod
+    def to_array():
+        """Chuyển các giá trị sang numpy array"""
+        base_values = [
+            Evaluation.pawn_value,
+            Evaluation.knight_value,
+            Evaluation.bishop_value,
+            Evaluation.rook_value,
+            Evaluation.queen_value
+        ]
+
+        # Gộp tất cả vào một list
+        full_list = base_values + \
+                    Evaluation.king_pawn_shield_scores + \
+                    Evaluation.passed_pawn_bonuses + \
+                    Evaluation.isolated_pawn_penalty_by_count
+
+        return np.array(full_list)
+    
+
+    @staticmethod
+    def to_dict():
+        """Chuyển dữ liệu thành dictionary"""
+        return {
+            "pawn_value": Evaluation.pawn_value,
+            "knight_value": Evaluation.knight_value,
+            "bishop_value": Evaluation.bishop_value,
+            "rook_value": Evaluation.rook_value,
+            "queen_value": Evaluation.queen_value,
+            "king_pawn_shield_scores": Evaluation.king_pawn_shield_scores,
+            "passed_pawn_bonuses": Evaluation.passed_pawn_bonuses,
+            "isolated_pawn_penalty_by_count": Evaluation.isolated_pawn_penalty_by_count
+        }
+
+    @staticmethod
+    def save_to_json(path):
+        """Lưu dữ liệu vào file JSON"""
+        data = Evaluation.to_dict()
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=4)
+    
+    @staticmethod
+    def load_from_json(path):
+        """Load dữ liệu từ file JSON"""
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+
+            Evaluation.pawn_value = data["pawn_value"]
+            Evaluation.knight_value = data["knight_value"]
+            Evaluation.bishop_value = data["bishop_value"]
+            Evaluation.rook_value = data["rook_value"]
+            Evaluation.queen_value = data["queen_value"]
+            Evaluation.king_pawn_shield_scores = data["king_pawn_shield_scores"]
+            Evaluation.passed_pawn_bonuses = data["passed_pawn_bonuses"]
+            Evaluation.isolated_pawn_penalty_by_count = data["isolated_pawn_penalty_by_count"]
+        except Exception:
+            print("co loi trong load file PieceSquareTable")
+
 
 class MaterialInfo:
     def __init__(self, num_pawns, num_knights, num_bishops, num_queens, num_rooks, my_pawns, enemy_pawns):

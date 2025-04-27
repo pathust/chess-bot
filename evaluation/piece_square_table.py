@@ -169,4 +169,3 @@ class PieceSquareTable:
         except Exception:
             print("co loi trong load file PieceSquareTable")
     
-PieceSquareTable.save_to_json("test.json")

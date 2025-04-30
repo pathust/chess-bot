@@ -15,6 +15,7 @@ class Searcher:
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
 
+
     def __init__(self, board: chess.Board, use_nnue=False):
         self.board = board
         self.current_depth = 0
@@ -28,7 +29,21 @@ class Searcher:
         self.debug_info = ""
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
-        
+        self.time_limit = Searcher.positive_infinity
+
+        #for time management
+        self.use_time_manager = False #defaul 
+
+        self.adjust_time_ratio = 1
+
+        self.counter_searched_nood = 0
+        self.last_ply_zero = 0
+        self.last_best_move = chess.Move.null()
+        self.best_move_searched_node = 0
+
+        self.history_best_scores = [0] * 20 # evel of best move per depth
+        self.history_best_node = [chess.Move.null()] * 20 #best move per depth
+        self.panic_eval = 150 #if eval decrease more than this in a ply, change to panic mode
         # Initialize search_diagnostics
         self.search_diagnostics = SearchDiagnostics()
 
@@ -41,7 +56,7 @@ class Searcher:
         # Run a depth 1 search for JIT warm-up
         self.search(1, 0, self.negative_infinity, self.positive_infinity)
 
-    def start_search(self, on_search_complete=None):
+    def start_search(self,time_limit = positive_infinity ,on_search_complete=None):
         # Initialize search
         self.best_eval_this_iteration = self.best_eval = 0
         self.best_move_this_iteration = self.best_move = chess.Move.null()
@@ -51,6 +66,7 @@ class Searcher:
         self.move_orderer.clear_history()
         self.repetition_table.init(self.board)
 
+        self.time_limit=time_limit
         # Initialize debug info
         self.current_depth = 0
         self.debug_info = "Starting search with FEN " + self.board.fen()
@@ -58,6 +74,12 @@ class Searcher:
         self.search_diagnostics = SearchDiagnostics()
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
+
+        #for time management
+        if self.use_time_manager:
+            self.adjust_time_ratio=1
+            self.history_best_scores = [0] * 20 # evel of best move per depth
+            self.history_best_node = [chess.Move.null()] * 20 #best move per depth
 
         print('initialized')
         # Search
@@ -78,6 +100,20 @@ class Searcher:
 
     def run_iterative_deepening_search(self):
         for search_depth in range(1, 257):  # 256 is enough for any practical chess position
+            if self.use_time_manager:
+                elapsed_time_ms = (time.time() - self.search_iteration_timer) * 1000
+
+                if(elapsed_time_ms  > self.time_limit * 0.3):
+                    self.adjust_time_ratio += self.adjust_time()
+                    elapsed_time_ms *= self.adjust_time_ratio
+                if(elapsed_time_ms  > self.time_limit * 0.5):
+                    break #stop cause not enough time
+
+                self.counter_searched_nood = 0
+                self.last_ply_zero = 0
+                self.last_best_move = chess.Move.null()
+                self.best_move_searched_node = 0
+
             print(search_depth)
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
@@ -85,7 +121,8 @@ class Searcher:
 
 
             self.search(search_depth, 0, self.negative_infinity, self.positive_infinity)
-
+            self.history_best_node[search_depth] = self.best_move_this_iteration
+            self.history_best_scores[search_depth] = self.best_eval_this_iteration
             if self.search_cancelled:
                 if self.has_searched_at_least_one_move:
                     self.best_move = self.best_move_this_iteration
@@ -132,6 +169,12 @@ class Searcher:
     ):
         if self.search_cancelled:
             return 0
+        self.increment_node()
+        if(ply_from_root == 0):
+
+            if(self.last_best_move !=self.best_eval_this_iteration ): # if best move change, defaule: nullmove != nullmove
+                self.best_move_searched_node = self.get_node_searched_branch()
+            self.update_searched_branch()
 
         if ply_from_root > 0:
             # Detect draw by three-fold repetition or fifty move rule
@@ -381,6 +424,142 @@ class Searcher:
         if move.null():
             return "null"
         return move.uci()
+
+    def increment_node(self):
+        self.counter_searched_nood += 1 # mỗi luồng 1 phần tử-> k cần điều tiết (nếu đa luồng)
+    def update_searched_branch(self):
+        self.last_ply_zero= self.counter_searched_nood
+    def get_node_searched_branch(self):
+        return self.counter_searched_nood - self.last_ply_zero
+
+    def get_best_move_changes(self, cur_depth):
+        """
+        caculate the change rate of best move from previous best moves
+
+        :param best_moves_history: list of best move.
+        :param N: Số lần lặp gần đây cần xem xét.
+        :return: Tỷ lệ thay đổi của nước đi tốt nhất.
+        """
+        last_care = 2
+        if cur_depth >= 6:
+            last_care = cur_depth - 4
+
+        changes = 0
+        for i in range(last_care, cur_depth+1):
+            if self.history_best_node[i] != self.history_best_node:
+                changes += 1 # result change in high depth move valuable
+
+        return changes / (cur_depth + 1 - last_care) 
+    
+    def score_analysis(self, cur_depth):
+        """
+        Phân tích điểm số qua các lần lặp để xác định xu hướng tăng, giảm, hoặc dao động.
+        
+        :param scores_history: Danh sách điểm số từ các lần lặp trước.
+        :return: Một từ điển chứa thông tin về độ dao động và biên độ điểm số.
+        """
+
+        last_care:int = 2
+        if cur_depth >= 5:
+            last_care = cur_depth - 3 # care about last 4 one only
+
+        increases = decreases = 0
+        max_score:int = Searcher.negative_infinity
+        min_score:int = Searcher.positive_infinity
+
+        for i in range(last_care, cur_depth+1):
+            if self.history_best_scores[i] > max_score:
+                max_score = self.history_best_scores[i]
+            if self.history_best_scores[i] < min_score:
+                min_score = self.history_best_scores[i]
+
+            if self.history_best_scores[i] > self.history_best_scores[i-1]:
+                increases += i #the depth equal with valuable
+            elif self.history_best_scores[i] < self.history_best_scores[i-1]:
+                decreases += i
+
+        score_change_rate=(max_score - min_score)/ max( abs(max_score), abs(min_score) )
+
+        if increases/(cur_depth + 1 - last_care) > decreases: #only the first one decrease
+            trend = "increasing"
+        elif decreases/(cur_depth + 1 - last_care) > increases: 
+            trend = "decreasing"
+        elif score_change_rate > 0.25 and max_score-min_score >= self.panic_eval*0.5:
+            trend = "oscillating"
+        else:
+            trend = "stable"
+        
+        if (self.history_best_scores[cur_depth -1] - self.history_best_scores[cur_depth] > self.panic_eval):
+            trend = "panic"
+
+
+        return trend, score_change_rate
+ 
+    def subtree_ratio(self):
+        return self.best_move_searched_node/self.counter_searched_nood
+    
+    def adjust_time(self, cur_depth):
+        """
+        Điều chỉnh thời gian suy nghĩ dựa trên các yếu tố phân tích.
+        
+        :param best_move_change_rate: Tỷ lệ thay đổi của nước đi tốt nhất.
+        :param score_amplitude: Biên độ dao động của điểm số.
+        :param subtree_ratio: Tỷ lệ kích thước của cây con.
+        :return: Thời gian đã điều chỉnh.
+        """
+        time_multiplier = 1.0
+        best_move_changes=self.get_best_move_changes(cur_depth=cur_depth)
+        trend,score_rate=self.score_analysis(cur_depth=cur_depth)
+        # Tăng thời gian dựa trên tỷ lệ thay đổi của nước đi tốt nhất
+        if best_move_changes == 0:
+            time_multiplier -= 0.2# 0 thay đổi thì giảm tgian
+        else:
+            time_multiplier += 0.25 * best_move_changes 
+        
+        # Tăng thời gian dựa trên biên độ dao động của điểm số
+        if trend == "panic":
+            time_multiplier += 0.25
+        elif trend == "oscillating":
+            time_multiplier += score_rate * 0.15
+        elif trend == "decreasing":
+            time_multiplier += score_rate * 0.2
+        elif trend == "increasing":
+            time_multiplier -= 0.15 # dont need to search more        
+        else: # trend =stable
+            time_multiplier -= 0.15
+
+        # Tăng thời gian dựa trên tỷ lệ kích thước cây con
+        tree_ratio = self.subtree_ratio()
+        if  tree_ratio > 0.9:
+            time_multiplier -= 0.3
+        elif tree_ratio > 0.8:
+            time_multiplier -= 0.1
+        elif tree_ratio < 0.3:
+            time_multiplier += 0.2
+        
+        return time_multiplier
+
+    """in Strock Fish: * điều kiện của bọn này khi bắt đầu tối ưu time là depth_searched >= 10  =))))
+    bestMoveInstability = 0.9929 + 1.8519 * (totBestMoveChanges / numThreads)
+    bestMoveInstability = 1 + 1.7 * (totBestMoveChanges / numThreads)
+    tùy bản
+    Time.optimum() * fallingEval * reduction * bestMoveInstability
+
+    timeReduction = 1.37 vs 0.65 tùy trường hợp)​
+
+    
+
+    Stockfish còn tính một đại lượng nodesEffort = rootMoves[0].effort * 100000 / nodes 
+    đo tỷ lệ số nút dành cho nhánh tốt nhất. Nếu nodesEffort ≥ 97056 (tức nhánh tốt nhất chiếm >97%) 
+    và search đã đủ sâu, engine sẽ dừng sớm (threads.stop = true) mà không chờ hết thời gian tối đa​
+    
+    không điều chỉnh time theo cây còn mà theo 1 công thức về độ đa dạng của bàn cờ(số move trong legal move,.....)
+
+    bestMoveChanges lớn (ví dụ ≥ 1) thì coi move hiện tại là “khó” 
+    và tăng thời gian suy luận (ví dụ nhân thời gian chuẩn với hệ số 1 + α * bestMoveChanges
+
+    """
+
 
     @staticmethod
     def is_mate_score(score):

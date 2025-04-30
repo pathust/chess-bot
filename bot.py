@@ -90,9 +90,13 @@ class ChessBot:
         # Lấy thời gian còn lại của bên đang đi
         my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
         my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
-
+        
         # Tính thời gian suy nghĩ là một phần của thời gian còn lại
-        think_time_ms = my_time_remaining_ms / 40.0  # Chia cho 40 nước
+        # Nên có bước tính toán stage để phân bổ phần này
+        nMoves =  min( numberOfMovesOutOfBook, 10 ) #hoàn thiện sau khi implement opening book
+        factor = 2 -  nMoves / 10 
+        target = my_time_remaining_ms / 40.0  # Chia cho 40 nước
+        time   = factor * target
 
         # Thêm một phần của thời gian cộng thêm
         if my_time_remaining_ms > my_increment_ms * 2:
@@ -101,6 +105,7 @@ class ChessBot:
         # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
         min_think_time = min(50, my_time_remaining_ms * 0.25)
         return int(max(min_think_time, think_time_ms))
+
 
     def think_timed(self, time_ms):
         """
@@ -208,6 +213,10 @@ class ChessBot:
         """
         # Nếu search_id được chỉ định, chỉ kết thúc tìm kiếm đó
         if search_id is not None and search_id != self.current_search_id:
+            return
+        if(self.searcher.time_limit != Searcher.positive_infinity and self.searcher.adjust_time_ratio > 1):
+            self.search_timer = threading.Timer(self.searcher.time_limit*(self.searcher.adjust_time_ratio - 1) / 1000.0,
+                                               lambda: self._end_search(self.current_search_id))
             return
 
         # Hủy timer nếu có

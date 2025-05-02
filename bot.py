@@ -1,3 +1,4 @@
+import math
 import threading
 from threading import Event
 import chess
@@ -77,6 +78,7 @@ class ChessBot:
     def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
         """
         Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại
+        Chia theo giai đoạn
         
         Args:
             time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
@@ -96,7 +98,7 @@ class ChessBot:
         nMoves =  min( numberOfMovesOutOfBook, 10 ) #hoàn thiện sau khi implement opening book
         factor = 2 -  nMoves / 10 
         target = my_time_remaining_ms / 40.0  # Chia cho 40 nước
-        time   = factor * target
+        think_time_ms   = factor * target
 
         # Thêm một phần của thời gian cộng thêm
         if my_time_remaining_ms > my_increment_ms * 2:
@@ -105,6 +107,113 @@ class ChessBot:
         # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
         min_think_time = min(50, my_time_remaining_ms * 0.25)
         return int(max(min_think_time, think_time_ms))
+    
+    def new_choose_think_time(self ,time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
+        """
+        Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại trong trường hợp không chia thời gian theo giai đoạn
+        Lấy ý tưởng từ stock fish
+        
+        Args:
+            time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
+            time_remaining_black_ms (int): Thời gian còn lại của đen (ms)
+            increment_white_ms (int): Thời gian cộng thêm mỗi nước của trắng (ms)
+            increment_black_ms (int): Thời gian cộng thêm mỗi nước của đen (ms)
+            
+        Returns:
+            int: Thời gian suy nghĩ được đề xuất (ms)
+        """
+        # Lấy thời gian còn lại của bên đang đi
+        my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
+        my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
+
+        centiMTG = 5051
+
+        # Make sure timeLeft is > 0 since we may use it as a divisor
+        timeLeft =my_time_remaining_ms+ (my_increment_ms * (centiMTG - 100) - 50 * (200 + centiMTG)) / 100       
+        originalTimeAdjust = 0.3128 * math.log10(timeLeft) - 0.4354
+        if originalTimeAdjust < 0:
+            originalTimeAdjust = 0.13
+
+        # Calculate time constants based on current time left.
+        logTimeInSec = math.log10(my_time_remaining_ms / 1000.0)
+        optConstant  = min(0.0032116 + 0.000321123 * logTimeInSec, 0.00508017)
+        
+        optScale = min(0.0121431 + math.pow(self.board.ply + 2.94693, 0.461073) * optConstant,
+                            0.213035 * my_time_remaining_ms / timeLeft) * originalTimeAdjust
+        
+        #maxConstant  = max(3.3977 + 3.03950 * logTimeInSec, 2.94761)
+        #maxScale = min(6.67704, maxConstant + ply / 11.9847)
+        
+        opt_time = optScale * my_time_remaining_ms
+
+    
+
+    """implement in strocfish:
+    +    if (limits.movestogo == 0): cứ chơi hết trận trong tgian bị giới hạn là dc
+    +   nhánh     if (limits.movestogo != 0 : luật cờ phải đi 1 số nc trong giai đoạn 
+
+
+
+    // These numbers are used where multiplications, divisions or comparisons
+    // with constants are involved.
+    const int64_t   scaleFactor = useNodesTime ? npmsec : 1;
+    const TimePoint scaledTime  = limits.time[us] / scaleFactor;
+    const TimePoint scaledInc   = limits.inc[us] / scaleFactor;
+
+    // Maximum move horizon
+
+    // If less than one second, gradually reduce mtg
+    if (scaledTime < 1000 && double(centiMTG) / scaledInc > 5.051)
+    {
+        centiMTG = scaledTime * 5.051;
+    }
+
+    // Make sure timeLeft is > 0 since we may use it as a divisor
+    TimePoint timeLeft =
+      std::max(TimePoint(1),
+               limits.time[us]
+                 + (limits.inc[us] * (centiMTG - 100) - moveOverhead * (200 + centiMTG)) / 100);
+
+        //moveOverhead  là một tham số cấu hình quan trọng trong việc quản lý thời gian. 
+        Nó đại diện cho khoảng thời gian dự phòng (tính bằng mili giây) mà engine giữ lại để đảm bảo không
+        vượt quá giới hạn thời gian do giao diện người dùng (GUI) đặt ra , t đặt là 50ms  
+
+    // x basetime (+ z increment)
+    // If there is a healthy increment, timeLeft can exceed the actual available
+    // game time for the current move, so also cap to a percentage of available game time.
+    if (limits.movestogo == 0)
+    {
+        // Extra time according to timeLeft
+        if (originalTimeAdjust < 0)
+            originalTimeAdjust = 0.3128 * std::log10(timeLeft) - 0.4354;
+
+        // Calculate time constants based on current time left.
+        double logTimeInSec = std::log10(scaledTime / 1000.0);
+        double optConstant  = std::min(0.0032116 + 0.000321123 * logTimeInSec, 0.00508017);
+        double maxConstant  = std::max(3.3977 + 3.03950 * logTimeInSec, 2.94761);
+
+        optScale = std::min(0.0121431 + std::pow(ply + 2.94693, 0.461073) * optConstant,
+                            0.213035 * limits.time[us] / timeLeft)
+                 * originalTimeAdjust;
+
+        maxScale = std::min(6.67704, maxConstant + ply / 11.9847);
+    }
+
+    // x moves in y seconds (+ z increment)
+    else
+    {
+        optScale =
+          std::min((0.88 + ply / 116.4) / (centiMTG / 100.0), 0.88 * limits.time[us] / timeLeft);
+        maxScale = 1.3 + 0.11 * (centiMTG / 100.0);
+    }
+
+    // Limit the maximum possible time for this move
+    optimumTime = TimePoint(optScale * timeLeft);
+    maximumTime =
+      TimePoint(std::min(0.825179 * limits.time[us] - moveOverhead, maxScale * optimumTime)) - 10;
+
+    if (options["Ponder"])
+        optimumTime += optimumTime / 4;"""
 
 
     def think_timed(self, time_ms):

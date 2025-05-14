@@ -663,7 +663,6 @@ class ChessBoard(QMainWindow):
             
             # Update thinking indicator
             self.thinking_indicator.start_thinking(current_ai)
-            self.thinking_indicator.show_status("")  # Clear status label when thinking
             
             # Stop the AI timer during calculation
             self.ai_timer.stop()

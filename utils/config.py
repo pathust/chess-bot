@@ -36,7 +36,7 @@ class Config:
     PAUSE_BUTTON_COLOR = "#f39c12"
     RESET_BUTTON_COLOR = "#3498db"
     SAVE_BUTTON_COLOR = "#16a085"
-    HOME_BUTTON_COLOR = "#e74c3c"
+    HOME_BUTTON_COLOR = "#b57a33"
     RESIGN_BUTTON_COLOR = "#e74c3c"
     UNDO_BUTTON_COLOR = "#9b59b6"
     

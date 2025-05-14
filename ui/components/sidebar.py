@@ -15,7 +15,7 @@ from PyQt5.QtGui import QColor
 
 from utils.config import Config
 from utils.error_handler import ErrorHandler
-from ui.components.controls import ControlButton, EnhancedSlider, ResignButton, UndoButton
+from ui.components.controls import ControlButton, ResignButton, UndoButton
 
 class SavedGameManager:
     """Manages saving and loading chess games."""
@@ -191,8 +191,8 @@ class SavedGameManager:
 
 class AIControlPanel(QScrollArea):
     """
-    AI control panel with improved responsive design.
-    Provides controls for AI game settings and game management.
+    AI control panel with simplified interface - no AI difficulty settings.
+    Provides only game management buttons for better usability.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -220,13 +220,13 @@ class AIControlPanel(QScrollArea):
         inner_widget.setStyleSheet("background-color: #2c3e50;")  
         self.setWidget(inner_widget)
         
-        # Create main layout with adaptive spacing
+        # Create main layout with moderate spacing
         self.main_layout = QVBoxLayout(inner_widget)
-        self.main_layout.setSpacing(15)
-        self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.main_layout.setSpacing(10) # Reduced spacing
+        self.main_layout.setContentsMargins(10, 10, 10, 10) # Reduced margins
         
         # Title header
-        self.title = QLabel("AI Controls")
+        self.title = QLabel("Game Controls")
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setStyleSheet("""
             font-size: 16pt; 
@@ -237,130 +237,90 @@ class AIControlPanel(QScrollArea):
             border-radius: 6px;
         """)
         self.main_layout.addWidget(self.title)
-                
-        # Create a responsive layout that can adapt to window width
-        responsive_container = QWidget()
-        responsive_layout = QGridLayout(responsive_container)
-        responsive_layout.setSpacing(10)
         
-        # Create button container
-        button_container = QWidget()
-        button_layout = QVBoxLayout(button_container)
-        button_layout.setSpacing(10)
+        # Create grid layout for more compact button arrangement
+        button_grid = QWidget()
+        grid_layout = QGridLayout(button_grid)
+        grid_layout.setSpacing(8) # Tight spacing between buttons
         
-        # Start button
+        # Make buttons smaller and arrange in a grid
+        button_height = 45  # Smaller height
+        
+        # Start button (top-left)
         self.start_button = ControlButton("▶ Start", Config.START_BUTTON_COLOR)
-        button_layout.addWidget(self.start_button)
+        self.start_button.setFixedHeight(button_height)
+        grid_layout.addWidget(self.start_button, 0, 0)
 
-        # Pause button
+        # Pause button (top-right)
         self.pause_button = ControlButton("⏸ Pause", Config.PAUSE_BUTTON_COLOR)
-        button_layout.addWidget(self.pause_button)
+        self.pause_button.setFixedHeight(button_height)
+        grid_layout.addWidget(self.pause_button, 0, 1)
 
-        # Reset button
+        # Reset button (middle-left)
         self.reset_button = ControlButton("↻ Reset", Config.RESET_BUTTON_COLOR)
-        button_layout.addWidget(self.reset_button)
+        self.reset_button.setFixedHeight(button_height)
+        grid_layout.addWidget(self.reset_button, 1, 0)
         
-        # Save Game button
+        # Save Game button (middle-right)
         self.save_button = ControlButton("💾 Save", Config.SAVE_BUTTON_COLOR)
-        button_layout.addWidget(self.save_button)
+        self.save_button.setFixedHeight(button_height)
+        grid_layout.addWidget(self.save_button, 1, 1)
         
-        # Resign button
+        # Resign button (bottom-left)
         self.resign_button = ResignButton()
-        button_layout.addWidget(self.resign_button)
+        self.resign_button.setFixedHeight(button_height)
+        grid_layout.addWidget(self.resign_button, 2, 0)
 
-        # Return to Home button
+        # Return to Home button (bottom-right)
         self.home_button = ControlButton("🏠 Home", Config.HOME_BUTTON_COLOR)
-        button_layout.addWidget(self.home_button)
+        self.home_button.setFixedHeight(button_height)
+        grid_layout.addWidget(self.home_button, 2, 1)
         
-        # Undo button (will be added in board.py setup_undo_button)
+        # Undo button container in its own row (spans both columns)
         self.undo_button_container = QWidget()
         self.undo_button_layout = QVBoxLayout(self.undo_button_container)
         self.undo_button_layout.setContentsMargins(0, 0, 0, 0)
-        button_layout.addWidget(self.undo_button_container)
+        grid_layout.addWidget(self.undo_button_container, 3, 0, 1, 2)  # Span both columns
         
-        button_layout.addStretch(1)
+        # Add the grid to the main layout
+        self.main_layout.addWidget(button_grid)
         
-        # Add button container to responsive layout
-        responsive_layout.addWidget(button_container, 0, 0, 1, 1)
-        
-        # Create slider container
-        slider_container = QWidget()
-        slider_layout = QVBoxLayout(slider_container)
-        slider_layout.setSpacing(15)
-        
-        # Create enhanced depth slider with thinking time estimation
-        self.depth_slider = EnhancedSlider(
-            "AI Thinking Depth:", 
-            Config.MIN_AI_SEARCH_DEPTH, 
-            Config.MAX_AI_SEARCH_DEPTH, 
-            Config.DEFAULT_AI_SEARCH_DEPTH, 
-            "Basic", 
-            "Deep"
-        )
-        self.depth_slider.valueChanged.connect(self.update_depth_info)
-        slider_layout.addWidget(self.depth_slider)
-        
-        # For backward compatibility - use the depth slider as the speed slider
-        # This allows existing code that calls self.control_panel.speed_slider to continue working
-        self.speed_slider = self.depth_slider
-        
-        # Add current depth display with improved visibility
-        depth_container = QFrame()
-        depth_container.setStyleSheet("""
-            QFrame {
-                background-color: #34495e;
-                border-radius: 5px;
-                padding: 10px;
-            }
-        """)
-        
-        depth_layout = QVBoxLayout(depth_container)
-        self.depth_value = QLabel(f"Current depth: {Config.DEFAULT_AI_SEARCH_DEPTH}")
-        self.depth_value.setAlignment(Qt.AlignCenter)
-        self.depth_value.setStyleSheet("""
-            font-size: 12pt;
-            font-weight: bold;
-            color: white;
-            padding: 2px;
-        """)
-        depth_layout.addWidget(self.depth_value)
-        
-        # Add estimated thinking time
-        self.thinking_time = QLabel(
-            f"Est. thinking time: {Config.get_estimated_thinking_time(Config.DEFAULT_AI_SEARCH_DEPTH)/1000:.1f}s"
-        )
-        self.thinking_time.setAlignment(Qt.AlignCenter)
-        self.thinking_time.setStyleSheet("""
-            font-size: 11pt;
-            color: #ecf0f1;
-            padding: 2px;
-        """)
-        depth_layout.addWidget(self.thinking_time)
-        
-        slider_layout.addWidget(depth_container)
-        slider_layout.addStretch(1)
-        
-        # Add slider container to responsive layout
-        responsive_layout.addWidget(slider_container, 0, 1, 1, 1)
-        
-        # Add responsive container to main layout
-        self.main_layout.addWidget(responsive_container)
+        # Add a stretcher to push everything to the top
+        self.main_layout.addStretch(1)
         
         # Set initial button states
         self.pause_button.setEnabled(False)
         
-        # Update displayed values
-        self.update_depth_info(Config.DEFAULT_AI_SEARCH_DEPTH)
-    
-    def update_depth_info(self, depth):
-        """Update the displayed depth information and estimated thinking time."""
-        self.depth_value.setText(f"Current depth: {depth}")
-        thinking_time = Config.get_estimated_thinking_time(depth)
-        self.thinking_time.setText(f"Est. thinking time: {thinking_time/1000:.1f}s")
+        # For backward compatibility - create hidden dummy sliders that don't do anything
+        # but have the required signals to prevent connection errors
+        from PyQt5.QtCore import pyqtSignal
+        
+        # Create a hidden dummy widget for the depth slider
+        self.depth_container = QWidget()
+        self.depth_container.hide()  # Hide it completely
+        self.main_layout.addWidget(self.depth_container)
+        
+        # Create a minimal slider class that just has the valueChanged signal
+        class DummySlider(QWidget):
+            valueChanged = pyqtSignal(int)
+            
+            def setValue(self, value):
+                pass
+                
+            def value(self):
+                return Config.DEFAULT_AI_SEARCH_DEPTH
+        
+        # Create the dummy sliders
+        self.depth_slider = DummySlider()
+        self.speed_slider = self.depth_slider  # Same object for both
+        
+        # Create a dummy value label for compatibility
+        self.depth_value = QLabel("")
+        self.depth_value.hide()
     
     def set_human_ai_mode(self):
         """Configure the panel for Human vs AI mode."""
-        self.title.setText("AI Settings")
+        self.title.setText("Game Controls")
         self.start_button.hide()
         self.pause_button.hide()
     
@@ -372,4 +332,4 @@ class AIControlPanel(QScrollArea):
     
     def sizeHint(self):
         """Provide a size hint for layout management."""
-        return QSize(250, 300)
+        return QSize(250, 400)

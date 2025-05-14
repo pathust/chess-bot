@@ -230,7 +230,6 @@ class ChessBoard(QMainWindow):
         
         self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
         self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
-        
         # Add everything to the main splitter
         self.main_splitter.addWidget(game_area)
         self.main_splitter.addWidget(sidebar)
@@ -308,6 +307,12 @@ class ChessBoard(QMainWindow):
                 )
                 
                 if success:
+                    # Track the state at which the game was saved
+                    self.last_saved_state = {
+                        'fen': self.board.fen(),
+                        'move_count': len(self.board.move_stack)
+                    }
+                    
                     filename = os.path.basename(filepath)
                     QMessageBox.information(self, "Game Saved", 
                                         f"Game successfully saved to {filename}")
@@ -468,8 +473,16 @@ class ChessBoard(QMainWindow):
                 finally:
                     self.popup = None
             
-            # Ask if user wants to save game
-            if not self.board.is_game_over() and len(self.board.move_stack) > 0:
+            # Track if we need to save game
+            # Add this attribute to track when the game was last saved
+            last_saved_state = getattr(self, 'last_saved_state', None)
+            current_state = {
+                'fen': self.board.fen(),
+                'move_count': len(self.board.move_stack)
+            }
+            
+            # Ask if user wants to save game only if it has changed since last save
+            if not self.board.is_game_over() and len(self.board.move_stack) > 0 and current_state != last_saved_state:
                 try:
                     reply = QMessageBox.question(
                         self, 
@@ -487,6 +500,9 @@ class ChessBoard(QMainWindow):
                                 self.last_move_from,
                                 self.last_move_to
                             )
+                            if success:
+                                # Remember the state at which we saved
+                                self.last_saved_state = current_state
                             if not success:
                                 return  # Cancel the return to home if save was canceled
                         except Exception as e:
@@ -595,6 +611,11 @@ class ChessBoard(QMainWindow):
         else:
             self.status_label.setText("Press 'Start' to begin AI vs AI game")
             
+        # Clear selection and move indicators
+        self.selected_square = None
+        self.valid_moves = []
+        self.castling_moves = []
+            
         self.last_move_from = None
         self.last_move_to = None
         self.move_history.clear_history()
@@ -603,7 +624,7 @@ class ChessBoard(QMainWindow):
         if hasattr(self, 'popup') and self.popup:
             self.popup.close()
             self.popup = None
-    
+        
     def animate_piece_movement(self, from_pos, to_pos, piece_symbol, piece_color, capture=False, callback=None):
         """Animate a piece moving from one square to another"""
         # Create the animated piece (temporary overlay)

@@ -178,24 +178,7 @@ class ChessBoard(QMainWindow):
         # Add the indicator space to the board layout
         board_layout.addWidget(indicator_space)
         
-        # Create status label with improved visibility
-        self.status_label = QLabel(self)
-        self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setFixedHeight(60)  # Fixed height to prevent resizing
-        self.status_label.setStyleSheet("""
-            font-size: 18px; 
-            font-weight: bold;
-            color: white; 
-            padding: 10px;
-            background-color: #34495e;
-            border-radius: 5px;
-            border: 1px solid #455a64;
-            margin: 0px;
-        """)
-        
-        # Add to game area
         game_layout.addWidget(board_container)
-        game_layout.addWidget(self.status_label)
         
         # Create right sidebar for controls and move history
         sidebar = QWidget()
@@ -254,9 +237,9 @@ class ChessBoard(QMainWindow):
         # Set initial status
         if self.mode == "human_ai":
             if self.turn == 'human':
-                self.status_label.setText("Your turn")
+                self.thinking_indicator.show_status("Your turn")
         else:
-            self.status_label.setText("Press 'Start' to begin AI vs AI game")
+            self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
         
         # Set up timers for animations and AI moves
         self.ai_timer = QTimer(self)
@@ -393,11 +376,11 @@ class ChessBoard(QMainWindow):
             # Update status message
             if self.mode == "human_ai":
                 if self.turn == 'human':
-                    self.status_label.setText("Your turn")
+                    self.thinking_indicator.show_status("Your turn")
                 else:
-                    self.status_label.setText("AI is thinking...")
+                    self.thinking_indicator.show_status("AI is thinking...")
             else:
-                self.status_label.setText("Press 'Start' to continue AI vs AI game")
+                self.thinking_indicator.show_status("Press 'Start' to continue AI vs AI game")
             
             return True
         except Exception as e:
@@ -560,7 +543,7 @@ class ChessBoard(QMainWindow):
             self.turn = 'ai1' if self.board.turn == chess.WHITE else 'ai2'
             
             # Clear the status label and show thinking indicator
-            self.status_label.setText("")
+            self.thinking_indicator.show_status("")
             if self.turn == 'ai1':
                 self.thinking_indicator.start_thinking("AI 1")
             else:
@@ -583,7 +566,7 @@ class ChessBoard(QMainWindow):
             
         self.control_panel.start_button.setEnabled(True)
         self.control_panel.pause_button.setEnabled(False)
-        self.status_label.setText("Game paused")
+        self.thinking_indicator.show_status("Game paused")
     
     def reset_game(self):
         """Reset the game to initial state"""
@@ -607,9 +590,9 @@ class ChessBoard(QMainWindow):
         self.control_panel.pause_button.setEnabled(False)
         
         if self.mode == "human_ai":
-            self.status_label.setText("Your turn")
+            self.thinking_indicator.show_status("Your turn")
         else:
-            self.status_label.setText("Press 'Start' to begin AI vs AI game")
+            self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
             
         # Clear selection and move indicators
         self.selected_square = None
@@ -680,7 +663,7 @@ class ChessBoard(QMainWindow):
             
             # Update thinking indicator
             self.thinking_indicator.start_thinking(current_ai)
-            self.status_label.setText("")  # Clear status label when thinking
+            self.thinking_indicator.show_status("")  # Clear status label when thinking
             
             # Stop the AI timer during calculation
             self.ai_timer.stop()
@@ -720,7 +703,7 @@ class ChessBoard(QMainWindow):
                     self.ai_game_running = False
                     self.control_panel.start_button.setEnabled(True)
                     self.control_panel.pause_button.setEnabled(False)
-                    self.status_label.setText("Invalid move: No piece found")
+                    self.thinking_indicator.show_status("Invalid move: No piece found")
                     return
                     
                 piece_color = "#FFFFFF" if piece.color == chess.WHITE else "#000000"
@@ -777,7 +760,7 @@ class ChessBoard(QMainWindow):
                             # Update status text (will be hidden when AI starts thinking)
                             next_ai = "AI 1" if self.turn == 'ai1' else "AI 2"
                             self.thinking_indicator.start_thinking(next_ai)
-                            self.status_label.setText("")
+                            self.thinking_indicator.show_status("")
                             
                             # Resume the AI timer for next move
                             self.ai_timer.start(self.move_delay)
@@ -785,7 +768,7 @@ class ChessBoard(QMainWindow):
                         print(f"Error in after_animation: {str(e)}")
                         self.ai_game_running = False
                         self.thinking_indicator.stop_thinking()
-                        self.status_label.setText(f"Error: {str(e)}")
+                        self.thinking_indicator.show_status(f"Error: {str(e)}")
                 
                 # Animate the piece movement
                 self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_animation)
@@ -795,14 +778,14 @@ class ChessBoard(QMainWindow):
                 self.thinking_indicator.stop_thinking()
                 self.control_panel.start_button.setEnabled(True)
                 self.control_panel.pause_button.setEnabled(False)
-                self.status_label.setText(f"Error: {str(e)}")
+                self.thinking_indicator.show_status(f"Error: {str(e)}")
         else:
             # No valid move found
             self.ai_game_running = False
             self.thinking_indicator.stop_thinking()
             self.control_panel.start_button.setEnabled(True)
             self.control_panel.pause_button.setEnabled(False)
-            self.status_label.setText("No valid moves available")
+            self.thinking_indicator.show_status("No valid moves available")
     
     def find_valid_moves(self, from_square):
         """Find all valid moves for a piece on the given square"""
@@ -914,12 +897,12 @@ class ChessBoard(QMainWindow):
             result = self.board.result()
             if result == '1-0':
                 winner = "Player (White)" if self.mode == "human_ai" else "AI 1 (White)"
-                self.status_label.setText(f"{winner} Wins!")
+                self.thinking_indicator.show_status(f"{winner} Wins!")
             elif result == '0-1':
                 winner = "AI (Black)" if self.mode == "human_ai" else "AI 2 (Black)"
-                self.status_label.setText(f"{winner} Wins!")
+                self.thinking_indicator.show_status(f"{winner} Wins!")
             else:
-                self.status_label.setText("It's a Draw!")
+                self.thinking_indicator.show_status("It's a Draw!")
             
             # Stop the AI game if running
             if self.ai_game_running:
@@ -938,20 +921,20 @@ class ChessBoard(QMainWindow):
             # Status update based on game mode and state
             if self.mode == "human_ai":
                 if self.turn == 'human':
-                    self.status_label.setText("Your turn")
+                    self.thinking_indicator.show_status("Your turn")
                 else:
                     # Don't update status here for AI turn, let the AI move function handle it
                     pass
             else:  # AI vs AI mode
                 if self.ai_game_running:
-                    # Status is handled by the thinking indicator, leave status label empty
-                    self.status_label.setText("")
+                    # Status is handled by the thinking indicator
+                    pass
                 else:
                     # Game not running, show start message
                     if self.turn == 'ai1':
-                        self.status_label.setText("Press 'Start' to begin AI vs AI game")
+                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
                     else:
-                        self.status_label.setText("Press 'Start' to continue AI vs AI game")
+                        self.thinking_indicator.show_status("Press 'Start' to continue AI vs AI game")
 
     def player_move(self, i, j):
         """Handle player move selection"""
@@ -1058,11 +1041,10 @@ class ChessBoard(QMainWindow):
                         if not self.board.is_game_over():
                             # Switch to AI's turn
                             self.turn = 'ai'
-                            
-                            # Update status with "thinking" animation and clear status label
-                            self.status_label.setText("")
+
+                            # Update status with "thinking" animation
                             self.thinking_indicator.start_thinking("AI")
-                            
+
                             # Allow UI to update before AI starts computing
                             QTimer.singleShot(100, self.ai_move)
                         else:
@@ -1094,7 +1076,6 @@ class ChessBoard(QMainWindow):
             self.ai_computation_active = True
             
             # Update status with thinking animation
-            self.status_label.setText("")
             self.thinking_indicator.start_thinking("AI")
             
             # Check if game is already over
@@ -1112,7 +1093,7 @@ class ChessBoard(QMainWindow):
         except Exception as e:
             self.thinking_indicator.stop_thinking()
             self.ai_computation_active = False
-            self.status_label.setText(f"Error during AI move: {str(e)}")
+            self.thinking_indicator.show_status(f"Error during AI move: {str(e)}")
     
     def handle_human_ai_move_result(self, best_move_uci):
         """Handle the result of AI computation for human vs AI mode"""
@@ -1132,7 +1113,7 @@ class ChessBoard(QMainWindow):
                     print(f"Error: No piece found at {from_square}")
                     self.thinking_indicator.stop_thinking()
                     self.turn = 'human'
-                    self.status_label.setText("AI made an invalid move. Your turn.")
+                    self.thinking_indicator.show_status("AI made an invalid move. Your turn.")
                     return
                     
                 from_pos = (7 - chess.square_rank(from_square), chess.square_file(from_square))
@@ -1178,6 +1159,9 @@ class ChessBoard(QMainWindow):
                         # Update board and switch back to human's turn
                         self.update_board()
                         self.turn = 'human'
+
+                        self.thinking_indicator.stop_thinking()  # First stop the "thinking" animation
+                        self.thinking_indicator.show_status("Your turn")
                         
                         # Check if game is over
                         if self.board.is_game_over():
@@ -1185,18 +1169,18 @@ class ChessBoard(QMainWindow):
                     except Exception as e:
                         print(f"Error after AI move: {str(e)}")
                         self.turn = 'human'
-                        self.status_label.setText("Your turn")
+                        self.thinking_indicator.show_status("Your turn")
                 
                 # Start animation
                 self.animate_piece_movement(from_pos, to_pos, piece_symbol, piece_color, is_capture, after_ai_move)
             else:
                 self.thinking_indicator.stop_thinking()
-                self.status_label.setText("AI could not find a valid move! Your turn.")
+                self.thinking_indicator.show_status("AI could not find a valid move! Your turn.")
                 self.turn = 'human'
         except Exception as e:
             print(f"Error in handle_human_ai_move_result: {str(e)}")
             self.thinking_indicator.stop_thinking()
-            self.status_label.setText("AI error. Your turn.")
+            self.thinking_indicator.show_status("AI error. Your turn.")
             self.turn = 'human'
 
     def show_game_over_popup(self, custom_message=None):
@@ -1320,7 +1304,7 @@ class ChessBoard(QMainWindow):
         try:
             # Check if there are moves to undo
             if len(self.board.move_stack) == 0:
-                self.status_label.setText("No moves to undo")
+                self.thinking_indicator.show_status("No moves to undo")
                 return
                 
             # Store the current board state before undoing
@@ -1378,14 +1362,14 @@ class ChessBoard(QMainWindow):
             self.update_board()
             
             # Notify the user about the undo
-            self.status_label.setText("Move undone!")
+            self.thinking_indicator.show_status("Move undone!")
             QTimer.singleShot(1500, self.update_status_after_undo)
             
         except Exception as e:
             import traceback
             print(f"Error in undo_move: {str(e)}")
             traceback.print_exc()
-            self.status_label.setText(f"Could not undo move")
+            self.thinking_indicator.show_status(f"Could not undo move")
 
     def update_status_after_undo(self):
         """Update the status message after an undo"""
@@ -1394,12 +1378,12 @@ class ChessBoard(QMainWindow):
             
         if self.mode == "human_ai":
             if self.turn == 'human':
-                self.status_label.setText("Your turn")
+                self.thinking_indicator.show_status("Your turn")
             else:
-                self.status_label.setText("AI's turn")
+                self.thinking_indicator.show_status("AI's turn")
         else:  # AI vs AI mode
             if not hasattr(self, 'ai_game_running') or not self.ai_game_running:
-                self.status_label.setText("Press 'Start' to continue AI vs AI game")
+                self.thinking_indicator.show_status("Press 'Start' to continue AI vs AI game")
 
     def update_move_history_after_undo(self):
         """Update the move history display after an undo operation"""
@@ -1560,7 +1544,7 @@ class ChessBoard(QMainWindow):
                     self.board.set_result(result)
                     
                     # Update the UI
-                    self.status_label.setText("You resigned. Game over.")
+                    self.thinking_indicator.show_status("You resigned. Game over.")
                     
                     # Show game over popup
                     self.show_game_over_popup(custom_message="You resigned the game")
@@ -1578,7 +1562,7 @@ class ChessBoard(QMainWindow):
                     self.board.set_result(result)
                     
                     # Update the UI
-                    self.status_label.setText("Game resigned")
+                    self.thinking_indicator.show_status("Game resigned")
                     
                     # Show game over popup
                     self.show_game_over_popup(custom_message=winner_text)

@@ -221,7 +221,7 @@ class ChessSquare(QLabel):
         return width
 
 class ThinkingIndicator(QLabel):
-    """Visual indicator for AI thinking state with improved visibility and animation."""
+    """Visual indicator for both game status and AI thinking state."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -285,6 +285,31 @@ class ThinkingIndicator(QLabel):
             font-weight: bold;
             color: white;
             background-color: rgba(52, 73, 94, {self.opacity});
+            border-radius: 10px;
+            padding: 10px;
+            border: 2px solid #3498db;
+            margin: 0px;
+        """)
+        
+    # New method to display status messages
+    def show_status(self, message):
+        """Show a status message without animation effects."""
+        # Stop any ongoing animations
+        self.timer.stop()
+        self.animation_timer.stop()
+        
+        # Set the text directly
+        self.setText(message)
+        
+        # Show the indicator
+        self.show()
+        
+        # Apply non-animated style
+        self.setStyleSheet("""
+            font-size: 16pt;
+            font-weight: bold;
+            color: white;
+            background-color: rgba(52, 73, 94, 0.9);
             border-radius: 10px;
             padding: 10px;
             border: 2px solid #3498db;

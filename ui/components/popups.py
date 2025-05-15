@@ -436,297 +436,120 @@ class PawnPromotionDialog(BaseDialog):
         return self.selected_piece
 
 
-class GameOverPopup(BaseDialog):
-    """Enhanced game over popup with visual effects and clear actions."""
+class GameOverPopup(QDialog):
+    """Simple and reliable game over popup with play again and return home options."""
     
     play_again_signal = pyqtSignal()
     return_home_signal = pyqtSignal()
-    save_game_signal = pyqtSignal()
     
-    def __init__(self, result, parent=None, custom_message=None):
-        super().__init__("Game Over", parent)
-        self.setFixedSize(450, 500)  # Slightly increased height for better spacing
-        
-        # Set color scheme based on result or custom message
-        if custom_message:
-            message = custom_message
-            if "AI 1" in message or "White" in message or "resigned" in message:
-                self.result_color = "#4CAF50"  # Green for white
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #4CAF50; border-radius: 30px; }")
-            elif "AI 2" in message or "Black" in message:
-                self.result_color = "#F44336"  # Red for black
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #F44336; border-radius: 30px; }")
-            else:
-                self.result_color = "#2196F3"  # Blue for draw
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #2196F3; border-radius: 30px; }")
-        else:
-            if result == '1-0':
-                message = "🏆 Player (White) Wins! 🏆"
-                self.result_color = "#4CAF50"  # Green for white
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #4CAF50; border-radius: 30px; }")
-            elif result == '0-1':
-                message = "❌ AI (Black) Wins! ❌"
-                self.result_color = "#F44336"  # Red for black
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #F44336; border-radius: 30px; }")
-            else:
-                message = "🤝 It's a Draw! 🤝"
-                self.result_color = "#2196F3"  # Blue for draw
-                self.setStyleSheet("QDialog { background-color: white; border: 3px solid #2196F3; border-radius: 30px; }")
-
-        # Add a decorative header
-        header = QLabel("GAME OVER", self)
-        header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet(f"""
-            font-size: 32pt; 
-            font-weight: bold; 
-            color: {self.result_color}; 
-            padding: 10px;
-            font-family: 'Arial', sans-serif;
-            background-color: white;
-            border-bottom: 2px solid {self.result_color};
+    def __init__(self, result, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Game Over")
+        self.setModal(True)
+        self.setFixedSize(400, 300)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f0f0f0;
+                border-radius: 10px;
+            }
         """)
-        self.content_layout.addWidget(header)
-
-        # Result message
-        result_label = QLabel(message, self)
-        result_label.setAlignment(Qt.AlignCenter)
-        result_label.setWordWrap(True)  # Allow text wrapping for longer messages
-        result_label.setStyleSheet(f"""
+        
+        # Set up layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Determine the result message
+        if result == '1-0':
+            message = "White Wins!"
+            result_color = "#4CAF50"  # Green for white
+        elif result == '0-1':
+            message = "Black Wins!"
+            result_color = "#F44336"  # Red for black
+        else:
+            message = "It's a Draw!"
+            result_color = "#2196F3"  # Blue for draw
+        
+        # Game over title
+        title = QLabel("GAME OVER")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet(f"""
             font-size: 24pt; 
             font-weight: bold; 
-            color: {self.result_color}; 
-            padding: 20px;
-            background-color: white;
-            font-family: 'Arial', sans-serif;
+            color: {result_color}; 
         """)
-        self.content_layout.addWidget(result_label)
+        layout.addWidget(title)
         
-        # Add game statistics if available
-        # Modify the game statistics section in the GameOverPopup.__init__ method:
-
-        # Add game statistics if available
-        if hasattr(self.parent(), 'board') and self.parent().board:
-            stats_frame = QFrame()
-            stats_frame.setFrameShape(QFrame.NoFrame)  # Remove the frame shape
-            stats_frame.setStyleSheet(f"""
-                background-color: rgba(248, 249, 250, 0.7); 
-                border-radius: 10px;
-                border: none;
-                padding: 15px;
-                margin: 10px 15px;
-            """)
-            
-            stats_layout = QVBoxLayout(stats_frame)
-            stats_layout.setSpacing(12)
-            stats_layout.setContentsMargins(5, 5, 5, 5)
-            
-            # Add stats heading with subtle styling
-            stats_heading = QLabel("Game Statistics")
-            stats_heading.setAlignment(Qt.AlignCenter)
-            stats_heading.setStyleSheet("""
-                font-size: 16pt;
-                font-weight: bold;
-                color: #495057;
-                padding-bottom: 5px;
-                border-bottom: 1px solid rgba(73, 80, 87, 0.2);
-            """)
-            stats_layout.addWidget(stats_heading)
-            
-            # Get move count with improved styling
-            move_count = len(self.parent().board.move_stack)
-            stats_text = QLabel(f"Total Moves: {move_count}")
-            stats_text.setAlignment(Qt.AlignCenter)
-            stats_text.setStyleSheet("""
-                font-size: 14pt;
-                color: #495057;
-                margin-top: 5px;
-            """)
-            stats_layout.addWidget(stats_text)
-            
-            # Add the stats frame
-            self.content_layout.addWidget(stats_frame)
-        
-        # Add spacer for better layout
-        self.content_layout.addSpacing(15)
-        
-        # Button container with explicitly set backgrounds
-        button_container = QFrame()
-        button_container.setStyleSheet("""
-            background-color: white;
-            border: none;
+        # Result message
+        result_label = QLabel(message)
+        result_label.setAlignment(Qt.AlignCenter)
+        result_label.setStyleSheet(f"""
+            font-size: 20pt; 
+            font-weight: bold; 
+            color: {result_color}; 
+            padding: 10px;
         """)
-        button_layout = QVBoxLayout(button_container)
-        button_layout.setSpacing(15)
+        layout.addWidget(result_label)
         
-        # Save Game button with enhanced visibility
-        self.save_game_button = QPushButton("Save This Game", self)
-        self.save_game_button.setCursor(Qt.PointingHandCursor)
-        self.save_game_button.setMinimumHeight(50)
-        self.save_game_button.setStyleSheet("""
-            QPushButton {
-                background-color: #16a085;
-                color: white;
-                font-size: 16pt;
-                font-weight: bold;
-                padding: 12px 20px;
-                border-radius: 8px;
-                border: 2px solid #138d75;
-                min-width: 200px;
-            }
-            QPushButton:hover {
-                background-color: #1abc9c;
-            }
-            QPushButton:pressed {
-                background-color: #0e6655;
-            }
-        """)
-        self.save_game_button.clicked.connect(self.save_game)
-        button_layout.addWidget(self.save_game_button, alignment=Qt.AlignCenter)
+        # Add spacer
+        layout.addStretch(1)
         
-        # Bottom row of buttons
-        button_row = QHBoxLayout()
-        button_row.setSpacing(20)
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(20)
         
-        # Play Again button with enhanced visibility
-        self.play_again_button = QPushButton("Play Again", self)
+        self.play_again_button = QPushButton("Play Again")
         self.play_again_button.setCursor(Qt.PointingHandCursor)
-        self.play_again_button.setMinimumHeight(50)
         self.play_again_button.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.result_color};
+                background-color: {result_color};
                 color: white;
-                font-size: 16pt;
+                font-size: 14pt;
                 font-weight: bold;
-                padding: 12px 20px;
-                border-radius: 8px;
-                border: 2px solid {self._darken_color(self.result_color)};
+                padding: 10px;
+                border-radius: 5px;
                 min-width: 150px;
             }}
             QPushButton:hover {{
-                background-color: {self._lighten_color(self.result_color)};
-            }}
-            QPushButton:pressed {{
-                background-color: {self._darken_color(self.result_color, 1.2)};
+                background-color: #555555;
             }}
         """)
         self.play_again_button.clicked.connect(self.play_again)
         
-        # Return Home button with enhanced visibility
-        self.return_home_button = QPushButton("Return to Home", self)
+        self.return_home_button = QPushButton("Return to Home")
         self.return_home_button.setCursor(Qt.PointingHandCursor)
-        self.return_home_button.setMinimumHeight(50)
         self.return_home_button.setStyleSheet("""
             QPushButton {
                 background-color: #607D8B;
                 color: white;
-                font-size: 16pt;
+                font-size: 14pt;
                 font-weight: bold;
-                padding: 12px 20px;
-                border-radius: 8px;
-                border: 2px solid #455A64;
+                padding: 10px;
+                border-radius: 5px;
                 min-width: 150px;
             }
             QPushButton:hover {
-                background-color: #78909C;
-            }
-            QPushButton:pressed {
-                background-color: #455A64;
+                background-color: #555555;
             }
         """)
         self.return_home_button.clicked.connect(self.return_home)
         
-        button_row.addWidget(self.play_again_button)
-        button_row.addWidget(self.return_home_button)
-        button_layout.addLayout(button_row)
+        button_layout.addWidget(self.play_again_button)
+        button_layout.addWidget(self.return_home_button)
         
-        # Add the button container to the main layout
-        self.content_layout.addWidget(button_container)
-        
-        # Add drop shadow to all buttons with enhanced visibility
-        for button in [self.save_game_button, self.play_again_button, self.return_home_button]:
-            shadow = QGraphicsDropShadowEffect(button)
-            shadow.setBlurRadius(20)
-            shadow.setColor(QColor(0, 0, 0, 100))
-            shadow.setOffset(0, 8)
-            button.setGraphicsEffect(shadow)
-        
-        # Remove the default button container
-        self.button_container.hide()
-        
-        # Animate the dialog appearance
-        self.animate_appearance()
-    
-    def animate_appearance(self):
-        """Animate the dialog appearing with a fade-in effect."""
-        self.setWindowOpacity(0.0)
-        
-        # Create and configure animation
-        self.animation = QPropertyAnimation(self, b"windowOpacity")
-        self.animation.setDuration(250)
-        self.animation.setStartValue(0.0)
-        self.animation.setEndValue(1.0)
-        self.animation.setEasingCurve(QEasingCurve.OutCubic)
-        self.animation.start()
-    
-    def save_game(self):
-        """Emit signal to save the game and close the dialog"""
-        try:
-            self.save_game_signal.emit()
-            self.accept()
-        except Exception as e:
-            print(f"Error in save_game: {e}")
-            # Try to close anyway to prevent UI lockup
-            self.accept()
+        layout.addLayout(button_layout)
     
     def play_again(self):
         """Emit signal to play again and close the dialog"""
-        try:
-            self.play_again_signal.emit()
-            self.accept()
-        except Exception as e:
-            print(f"Error in play_again: {e}")
-            # Try to close anyway to prevent UI lockup
-            self.accept()
+        self.play_again_signal.emit()
+        self.accept()
     
     def return_home(self):
         """Emit signal to return to home screen and close the dialog"""
-        try:
-            self.return_home_signal.emit()
-            self.accept()
-        except Exception as e:
-            print(f"Error in return_home: {e}")
-            # Try to close anyway to prevent UI lockup
-            self.accept()
-    
-    def closeEvent(self, event):
-        """Override to ensure proper cleanup when the dialog is closed."""
-        # Disconnect all signals to prevent memory leaks
-        try:
-            self.play_again_signal.disconnect()
-            self.return_home_signal.disconnect()
-            self.save_game_signal.disconnect()
-        except Exception:
-            pass  # It's okay if they're not connected
-        super().closeEvent(event)
-        
-    def _lighten_color(self, color, factor=1.1):
-        """Lighten a hex color."""
-        if color.startswith('#'):
-            color = color[1:]
-        r = min(255, int(int(color[0:2], 16) * factor))
-        g = min(255, int(int(color[2:4], 16) * factor))
-        b = min(255, int(int(color[4:6], 16) * factor))
-        return f"#{r:02x}{g:02x}{b:02x}"
-    
-    def _darken_color(self, color, factor=1.1):
-        """Darken a hex color."""
-        if color.startswith('#'):
-            color = color[1:]
-        r = max(0, int(int(color[0:2], 16) / factor))
-        g = max(0, int(int(color[2:4], 16) / factor))
-        b = max(0, int(int(color[4:6], 16) / factor))
-        return f"#{r:02x}{g:02x}{b:02x}"
+        self.return_home_signal.emit()
+        self.accept()
 
+        
 # Enhance the ResignConfirmationDialog for better user experience
 class ResignConfirmationDialog(BaseDialog):
     """Dialog to confirm resignation from a game."""

@@ -1182,44 +1182,30 @@ class ChessBoard(QMainWindow):
             self.thinking_indicator.show_status("AI error. Your turn.")
             self.turn = 'human'
 
-    def show_game_over_popup(self, custom_message=None):
-        """Show the game over popup with appropriate message and options"""
-        # Delete any existing popup first to prevent memory leaks and UI conflicts
-        if hasattr(self, 'popup') and self.popup:
-            try:
+    def show_game_over_popup(self):
+        """Show a simple game over popup with retry and home options."""
+        try:
+            # Delete any existing popup first
+            if hasattr(self, 'popup') and self.popup:
                 self.popup.close()
-                self.popup.deleteLater()
-            except Exception as e:
-                print(f"Error closing existing popup: {str(e)}")
-            self.popup = None
-                
-        result = self.board.result()
-        
-        if custom_message:
-            # If a custom message was provided, use it
-            if self.mode == "human_ai":
-                self.popup = GameOverPopup(result, self, custom_message)
-            else:
-                self.popup = GameOverPopup(result, self, custom_message)
-        elif self.mode == "human_ai":
+                self.popup = None
+                    
+            result = self.board.result()
+            
+            # Create the new simplified popup
             self.popup = GameOverPopup(result, self)
-        else:
-            winner_text = ""
-            if result == '1-0':
-                winner_text = "🏆 AI 1 (White) Wins! 🏆"
-            elif result == '0-1':
-                winner_text = "🏆 AI 2 (Black) Wins! 🏆"
-            else:
-                winner_text = "🤝 It's a Draw! 🤝"
-                
-            self.popup = GameOverPopup(result, self, winner_text)
-        
-        # Connect popup signals
-        self.popup.play_again_signal.connect(self.reset_game)
-        self.popup.return_home_signal.connect(self.return_to_home)
-        self.popup.save_game_signal.connect(self.save_game_with_dialog)
-        
-        self.popup.exec_()
+            
+            # Connect signals
+            self.popup.play_again_signal.connect(self.reset_game)
+            self.popup.return_home_signal.connect(self.return_to_home)
+            
+            # Show the popup
+            self.popup.exec_()
+            
+        except Exception as e:
+            print(f"Error showing game over popup: {str(e)}")
+            # If the popup fails, at least update the status
+            self.thinking_indicator.show_status("Game Over!")
 
     def close_game(self):
         """Close the game window"""

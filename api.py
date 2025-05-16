@@ -65,7 +65,6 @@ async def get_best_move(fen: str, depth: int = 3):
             timeout=60  # Set a timeout to prevent hanging
         )
 
-        # Check for errors from stderr
         if result.stderr:
             logger.error(f"Engine error: {result.stderr.strip()}")
             return {"error": result.stderr.strip()}

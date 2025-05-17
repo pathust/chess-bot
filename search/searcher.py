@@ -14,7 +14,8 @@ class Searcher:
     immediate_mate_score = 100000
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
-
+    max_depth:int = 5
+    expansion_ratio = [0,0,5.918685130964094,2.31559020535454,2.928389878801775,2.977312373936534,2.206598636221307,1.49191046769435,1.0995220641809031,1.0128484938632873,1.086859457633767,2,2,2,2,2,2]
 
     def __init__(self, board: chess.Board, use_nnue=False):
         self.board = board
@@ -33,7 +34,6 @@ class Searcher:
 
         #for time management
         self.use_time_manager = False #defaul 
-
         self.adjust_time_ratio = 1
 
         self.counter_searched_nood = 0
@@ -99,14 +99,14 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(1, 257):  # 256 is enough for any practical chess position
+        for search_depth in range(1, self.max_depth+1): 
             if self.use_time_manager:
                 elapsed_time_ms = (time.time() - self.search_iteration_timer) * 1000
 
                 if(elapsed_time_ms  > self.time_limit * 0.3):
                     self.adjust_time_ratio += self.adjust_time()
                     elapsed_time_ms *= self.adjust_time_ratio
-                if(elapsed_time_ms  > self.time_limit * 0.5):
+                if(elapsed_time_ms  > self.time_limit * Searcher.expansion_ratio[search_depth]):
                     break #stop cause not enough time
 
                 self.counter_searched_nood = 0

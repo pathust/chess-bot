@@ -1182,7 +1182,7 @@ class ChessBoard(QMainWindow):
             self.thinking_indicator.show_status("AI error. Your turn.")
             self.turn = 'human'
 
-    def show_game_over_popup(self):
+    def show_game_over_popup(self, custom_message=None):
         """Show a simple game over popup with retry and home options."""
         try:
             # Delete any existing popup first
@@ -1193,7 +1193,7 @@ class ChessBoard(QMainWindow):
             result = self.board.result()
             
             # Create the new simplified popup
-            self.popup = GameOverPopup(result, self)
+            self.popup = GameOverPopup(result, self, custom_message)
             
             # Connect signals
             self.popup.play_again_signal.connect(self.reset_game)
@@ -1285,7 +1285,7 @@ class ChessBoard(QMainWindow):
             return False
 
     def undo_move(self):
-        """Undo the last move made in the game"""
+        """Undo the last move made in the game with improved turn tracking"""
         try:
             # Check if there are moves to undo
             if len(self.board.move_stack) == 0:
@@ -1294,6 +1294,7 @@ class ChessBoard(QMainWindow):
                 
             # Store the current board state before undoing
             previous_fen = self.board.fen()
+            current_turn_before_undo = self.board.turn  # Store whose turn it is before undoing
             last_move = self.board.pop()
             
             # Update the move history
@@ -1301,29 +1302,42 @@ class ChessBoard(QMainWindow):
             
             # Handle the turn logic based on game mode
             if self.mode == "human_ai":
-                # If it was the AI's move, go back to human's turn
-                if self.turn == 'ai':
+                # If we're in human vs AI mode, we need to ensure turns alternate properly
+                # In this mode, human is always WHITE and AI is always BLACK
+                
+                # Check whose turn it is now after undoing
+                current_turn_after_undo = self.board.turn
+                
+                # If we undid a human move (going from BLACK's turn to WHITE's turn)
+                if current_turn_before_undo == chess.BLACK and current_turn_after_undo == chess.WHITE:
                     self.turn = 'human'
-                    # Clear any AI worker if it's running
-                    if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
-                        if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
-                            self.ai_worker.terminate()
-                            self.ai_worker = None
-                            self.ai_computation_active = False
-                    # Stop thinking indicator
-                    if hasattr(self, 'thinking_indicator'):
-                        self.thinking_indicator.stop_thinking()
-                # If we're in human vs AI and we undo a human move, we need to undo the AI move too
-                # (if there's still a move to undo)
-                elif len(self.board.move_stack) > 0 and self.turn == 'human':
-                    # This will undo the AI's move
-                    previous_fen = self.board.fen()
-                    self.board.pop()
-                    # Update the move history again
-                    self.update_move_history_after_undo()
+                    
+                # If we undid an AI move (going from WHITE's turn to BLACK's turn)
+                elif current_turn_before_undo == chess.WHITE and current_turn_after_undo == chess.BLACK:
+                    # We need to undo one more move to get back to human's turn
+                    if len(self.board.move_stack) > 0:
+                        self.board.pop()
+                        self.update_move_history_after_undo()
+                        self.turn = 'human'
+                    else:
+                        # If no more moves to undo, we're at the start with BLACK to move
+                        self.turn = 'ai'
+                        
+                # Clear any AI worker if it's running
+                if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
+                    if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
+                        self.ai_worker.terminate()
+                        self.ai_worker = None
+                        self.ai_computation_active = False
+                        
+                # Ensure we've stopped the thinking indicator
+                if hasattr(self, 'thinking_indicator'):
+                    self.thinking_indicator.stop_thinking()
+                    
             else:  # AI vs AI mode
-                # Simply toggle between AI1 and AI2
-                self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                # In AI vs AI mode, simply toggle between AI1 (WHITE) and AI2 (BLACK)
+                # based on whose turn it is now
+                self.turn = 'ai1' if self.board.turn == chess.WHITE else 'ai2'
                 
                 # If the AI game is running, pause it to avoid confusion
                 if hasattr(self, 'ai_game_running') and self.ai_game_running:
@@ -1348,6 +1362,9 @@ class ChessBoard(QMainWindow):
             
             # Notify the user about the undo
             self.thinking_indicator.show_status("Move undone!")
+            
+            # Update the status message after a short delay
+            from PyQt5.QtCore import QTimer
             QTimer.singleShot(1500, self.update_status_after_undo)
             
         except Exception as e:
@@ -1375,31 +1392,31 @@ class ChessBoard(QMainWindow):
         try:
             if not hasattr(self, 'move_history'):
                 return
-                
+                    
             # Get the current count of items in the move list
             move_list = self.move_history.move_list
             if not move_list:
                 print("Move list is not available")
                 return
-                
+                    
             count = move_list.count()
             
             if count == 0:
                 return
-                
+                    
             # Get the last item in the list
             current_item = move_list.item(count - 1)
             if current_item is None:
                 return
-                
+                    
             current_text = current_item.text()
             
             # Check if the item contains both white and black moves
-            if " " in current_text:
+            if " (" in current_text and ") " in current_text and ")" not in current_text.split(") ")[0]:
                 try:
                     # Remove just the black move part (keep white's move)
-                    white_move = current_text.split(" ")[0]
-                    current_item.setText(white_move)
+                    white_move_part = current_text.split(") ")[0] + ")"
+                    current_item.setText(white_move_part)
                     # Remove any formatting that was added for combined moves
                     font = current_item.font()
                     font.setBold(False)
@@ -1408,7 +1425,7 @@ class ChessBoard(QMainWindow):
                     print(f"Error formatting move text: {str(e)}")
             else:
                 try:
-                    # Remove the entire item if it's just a white move
+                    # Remove the entire item if it's just a white move or already formatted
                     move_list.takeItem(count - 1)
                 except Exception as e:
                     print(f"Error removing move item: {str(e)}")

@@ -103,7 +103,7 @@ class MoveHistoryWidget(QFrame):
     # Update the MoveHistoryWidget.add_move method to improve the format
 
     def add_move(self, piece, from_square, to_square, color="White", capture=False, 
-                check=False, promotion=None, castling=False, en_passant=False):
+              check=False, promotion=None, castling=False, en_passant=False):
         """
         Add a move to the history with proper chess notation and improved formatting.
         
@@ -138,11 +138,7 @@ class MoveHistoryWidget(QFrame):
             }
             
             notation = ""
-            
-            # Add move number for White moves
-            if color == "White":
-                move_number = (self.move_list.count() // 2) + 1
-                notation = f"{move_number}. "
+            enhanced_format = f"{from_square}-{to_square}"
             
             # Handle castling notation
             if castling:
@@ -158,9 +154,6 @@ class MoveHistoryWidget(QFrame):
                 # Add source file for pawns making a capture
                 if capture and piece.piece_type == chess.PAWN:
                     notation += from_square[0]
-                
-                # For enhanced formatting, always add the from square except for castling
-                from_coord = from_square
                 
                 # Add capture symbol if needed
                 if capture or en_passant:
@@ -180,19 +173,18 @@ class MoveHistoryWidget(QFrame):
             # Add check/checkmate symbol
             if check:
                 notation += "+"  # For simplicity, we use + for check
-                
-            # Format the move in the list with improved display
-            # New enhanced format showing from-to coordinates
-            enhanced_format = f"{from_square}-{to_square}"
             
             if color == "White":
-                # Format: "1. e4 (e2-e4)"
-                item = QListWidgetItem(f"{notation.ljust(10)} ({enhanced_format})")
+                # Calculate next move number - this is the sequential move number
+                move_number = self.move_list.count() + 1
+                
+                # Create new item for White's move
+                item = QListWidgetItem(f"{move_number}. {notation.ljust(8)} ({enhanced_format})")
                 item_color = "#0000aa"  # Dark blue for white's moves
                 item.setForeground(QBrush(QColor(item_color)))
                 self.move_list.addItem(item)
             else:
-                # Update the last item to include the black move
+                # For Black's move, we append to the last item
                 current_item = self.move_list.item(self.move_list.count() - 1)
                 if current_item:
                     current_text = current_item.text()
@@ -207,7 +199,7 @@ class MoveHistoryWidget(QFrame):
                 else:
                     # If there's no white move (unlikely but possible in custom positions),
                     # create a new item for black's move
-                    move_number = (self.move_list.count()) + 1
+                    move_number = self.move_list.count() + 1
                     item = QListWidgetItem(f"{move_number}. ... {notation} ({enhanced_format})")
                     item_color = "#000000"  # Black for black's moves
                     item.setForeground(QBrush(QColor(item_color)))
@@ -218,8 +210,9 @@ class MoveHistoryWidget(QFrame):
         except Exception as e:
             print(f"Error adding move to history: {str(e)}")
             # Add a fallback entry if normal notation fails
+            move_number = (self.move_list.count() // 2) + 1
             if color == "White":
-                self.move_list.addItem(f"{from_square}-{to_square}")
+                self.move_list.addItem(f"{move_number}. {from_square}-{to_square}")
             else:
                 self.move_list.addItem(f"... {from_square}-{to_square}")
 

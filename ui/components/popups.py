@@ -442,7 +442,7 @@ class GameOverPopup(QDialog):
     play_again_signal = pyqtSignal()
     return_home_signal = pyqtSignal()
     
-    def __init__(self, result, parent=None):
+    def __init__(self, result, parent=None, custom_message=None):
         super().__init__(parent)
         self.setWindowTitle("Game Over")
         self.setModal(True)
@@ -459,16 +459,21 @@ class GameOverPopup(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Determine the result message
-        if result == '1-0':
-            message = "White Wins!"
-            result_color = "#4CAF50"  # Green for white
-        elif result == '0-1':
-            message = "Black Wins!"
-            result_color = "#F44336"  # Red for black
+        # Use custom message if provided, otherwise determine based on result
+        if custom_message:
+            message = custom_message
+            result_color = "#F44336"  # Use red for resignation
         else:
-            message = "It's a Draw!"
-            result_color = "#2196F3"  # Blue for draw
+            # Determine the result message
+            if result == '1-0':
+                message = "White Wins!"
+                result_color = "#4CAF50"  # Green for white
+            elif result == '0-1':
+                message = "Black Wins!"
+                result_color = "#F44336"  # Red for black
+            else:
+                message = "It's a Draw!"
+                result_color = "#2196F3"  # Blue for draw
         
         # Game over title
         title = QLabel("GAME OVER")
@@ -490,7 +495,7 @@ class GameOverPopup(QDialog):
             padding: 10px;
         """)
         layout.addWidget(result_label)
-        
+            
         # Add spacer
         layout.addStretch(1)
         

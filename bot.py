@@ -106,8 +106,9 @@ class ChessBot:
             int: Thời gian suy nghĩ được đề xuất (ms)
         """
         # Lấy thời gian còn lại của bên đang đi
+        offset_time = 30 #thời gian dự tính để xử lý mỗi ply
         my_time_remaining_ms = self.remain_time_white if self.board.turn else self.remain_time_black
-        my_increment_ms = self.increment_time
+        my_increment_ms = self.increment_time -offset_time 
 
         centiMTG = 5051
 
@@ -128,7 +129,7 @@ class ChessBot:
         #maxConstant  = max(3.3977 + 3.03950 * logTimeInSec, 2.94761)
         #maxScale = min(6.67704, maxConstant + ply / 11.9847)
         
-        opt_time = optScale * my_time_remaining_ms + 30
+        opt_time = optScale * my_time_remaining_ms
         return opt_time
 
     """MTG (Moves To Go): số nước tối ưu engine cần thực hiện để kết thúc ván đấu nếu cả hai bên chơi hoàn hảo (theo tablebase hoặc phân tích rất sâu).
@@ -349,8 +350,4 @@ class ChessBot:
         self.search_cancelled = True
         self.search_event.set()  # Wake up thread để nó có thể thoát
 
-
-chess_bot = ChessBot(use_nnue=False)
-chess_bot.set_think_time_second(40)
-print(chess_bot.new_choose_think_time())
 

@@ -2,9 +2,10 @@ import threading
 from threading import Event
 import chess
 from search.searcher import Searcher
+import time 
 
 class ChessBot:
-    def __init__(self, use_nnue=False, initial_fen=None):
+    def __init__(self, initial_fen=None):
         """
         Khởi tạo Bot cờ vua
         
@@ -19,7 +20,7 @@ class ChessBot:
 
         # Tạo searcher cho việc tìm kiếm nước đi tốt nhất
         print("Initializing searcher")
-        self.searcher = Searcher(self.board, use_nnue)
+        self.searcher = Searcher(self.board)
 
         # Trạng thái tìm kiếm
         self.is_thinking = False
@@ -151,6 +152,7 @@ class ChessBot:
                 # Bắt đầu tìm kiếm
                 try:
                     print("Starting search")
+                    start = time.time()
                     self.searcher.start_search()
 
                     # Sau khi tìm kiếm hoàn thành, lấy nước đi tốt nhất từ searcher
@@ -160,6 +162,8 @@ class ChessBot:
                     # Thông báo kết quả
                     if self.is_thinking:
                         self._search_completed(best_move)
+                    duration = time.time() - start
+                    print("Excuted Time: ", duration)
 
                 except Exception as e:
                     print(f"Error in search thread: {str(e)}")
@@ -180,6 +184,14 @@ class ChessBot:
         Args:
             move (chess.Move): Nước đi tốt nhất được tìm thấy
         """
+        # Ghi lại thời điểm khi tìm kiếm hoàn thành
+        search_complete_time = time.time()
+        print(f"SEARCH_COMPLETED: {search_complete_time:.6f}")
+        
+        if hasattr(self, 'end_search_start_time') and self.end_search_start_time > 0:
+            delay = search_complete_time - self.end_search_start_time
+            print(f"SEARCH_CANCEL_DELAY: {delay:.6f} seconds")
+
         if not self.is_thinking:
             return
 
@@ -206,6 +218,10 @@ class ChessBot:
         Args:
             search_id (int, optional): ID của tìm kiếm cần kết thúc
         """
+        # Ghi lại thời điểm bắt đầu thực hiện end_search
+        end_search_start_time = time.time()
+        print(f"END_SEARCH_START: {end_search_start_time:.6f}")
+        
         # Nếu search_id được chỉ định, chỉ kết thúc tìm kiếm đó
         if search_id is not None and search_id != self.current_search_id:
             return
@@ -219,6 +235,7 @@ class ChessBot:
         if self.is_thinking:
             self.search_cancelled = True
             self.searcher.end_search()
+            print(f"END_SEARCH_SIGNAL_SENT: {time.time():.6f}")
 
             # Lấy nước đi tốt nhất hiện tại nếu có
             if hasattr(self.searcher, 'best_move') and self.searcher.best_move:

@@ -82,6 +82,7 @@ class ChessBot:
             return False
 
     def set_think_time_second(self, total_time: int, increment_time: int =0):
+        """nhận input đầu vào là thời gian với đơn vị giây"""
         total_time = total_time * 1000
         self.total_time = total_time
         self.remain_time_white = total_time
@@ -95,51 +96,11 @@ class ChessBot:
         else:
             self.remain_time_black -= self.searcher.search_total_timer
     
-
-    def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
-        """
-        Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại
-        Chia theo giai đoạn
-        
-        Args:
-            time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
-            time_remaining_black_ms (int): Thời gian còn lại của đen (ms)
-            increment_white_ms (int): Thời gian cộng thêm mỗi nước của trắng (ms)
-            increment_black_ms (int): Thời gian cộng thêm mỗi nước của đen (ms)
-            
-        Returns:
-            int: Thời gian suy nghĩ được đề xuất (ms)
-        """
-        # Lấy thời gian còn lại của bên đang đi
-        my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
-        my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
-        
-        # Tính thời gian suy nghĩ là một phần của thời gian còn lại
-        # Nên có bước tính toán stage để phân bổ phần này
-
-        nMoves =  min( numberOfMovesOutOfBook, 10 ) #hoàn thiện sau khi implement opening book
-        factor = 2 -  nMoves / 10 
-        target = my_time_remaining_ms / 40.0  # Chia cho 40 nước
-        think_time_ms   = factor * target
-
-        # Thêm một phần của thời gian cộng thêm
-        if my_time_remaining_ms > my_increment_ms * 2:
-            think_time_ms += my_increment_ms * 0.8
-
-        # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
-        min_think_time = min(50, my_time_remaining_ms * 0.25)
-        return int(max(min_think_time, think_time_ms))
-    
+  
     def new_choose_think_time(self):
         """
         Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại trong trường hợp không chia thời gian theo giai đoạn
         Lấy ý tưởng từ stock fish
-        
-        Args:
-            time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
-            time_remaining_black_ms (int): Thời gian còn lại của đen (ms)
-            increment_white_ms (int): Thời gian cộng thêm mỗi nước của trắng (ms)
-            increment_black_ms (int): Thời gian cộng thêm mỗi nước của đen (ms)
             
         Returns:
             int: Thời gian suy nghĩ được đề xuất (ms)
@@ -160,15 +121,20 @@ class ChessBot:
         logTimeInSec = math.log10(my_time_remaining_ms / 1000.0)
         optConstant  = min(0.0032116 + 0.000321123 * logTimeInSec, 0.00508017)
         
-        optScale = min(0.0121431 + math.pow(self.board.ply + 2.94693, 0.461073) * optConstant,
+        optScale = min(0.0121431 + math.pow(self.board.ply() + 2.94693, 0.461073) * optConstant,
                             0.213035 * my_time_remaining_ms / timeLeft) * originalTimeAdjust
         
+        optScale = min (0.5,optScale)
         #maxConstant  = max(3.3977 + 3.03950 * logTimeInSec, 2.94761)
         #maxScale = min(6.67704, maxConstant + ply / 11.9847)
         
-        opt_time = optScale * my_time_remaining_ms
+        opt_time = optScale * my_time_remaining_ms + 30
         return opt_time
 
+    """MTG (Moves To Go): số nước tối ưu engine cần thực hiện để kết thúc ván đấu nếu cả hai bên chơi hoàn hảo (theo tablebase hoặc phân tích rất sâu).
+    Centi-MTG: chỉ là MTG × 100 để có độ chính xác cao hơn (giống như centipawn là pawn × 100).
+    lấy defaulse = 5051"""
+    # t có để biến  self.use_time_manager trong searcher = false nếu để chỉnh thời gian thì set lên true sau
     def think_timed(self, time_ms):
         """
         Bắt đầu tìm kiếm nước đi tốt nhất với thời gian giới hạn
@@ -276,10 +242,6 @@ class ChessBot:
         # Nếu search_id được chỉ định, chỉ kết thúc tìm kiếm đó
         if search_id is not None and search_id != self.current_search_id:
             return
-        if(self.searcher.time_limit != Searcher.positive_infinity and self.searcher.adjust_time_ratio > 1):
-            self.search_timer = threading.Timer(self.searcher.time_limit*(self.searcher.adjust_time_ratio - 1) / 1000.0,
-                                               lambda: self._end_search(self.current_search_id))
-            return
 
         # Hủy timer nếu có
         if self.search_timer:
@@ -386,3 +348,9 @@ class ChessBot:
         self.stop_thinking()
         self.search_cancelled = True
         self.search_event.set()  # Wake up thread để nó có thể thoát
+
+
+chess_bot = ChessBot(use_nnue=False)
+chess_bot.set_think_time_second(40)
+print(chess_bot.new_choose_think_time())
+

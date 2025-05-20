@@ -15,7 +15,9 @@ class Searcher:
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
     max_depth:int = 5
-    expansion_ratio = [0,0,5.918685130964094,2.31559020535454,2.928389878801775,2.977312373936534,2.206598636221307,1.49191046769435,1.0995220641809031,1.0128484938632873,1.086859457633767,2,2,2,2,2,2]
+    expansion_ratio = [0, 0, 6.7413367350868025, 2.272038900361762, 2.924278660203187, 
+                       3.183393127772726,2.5357014873902997,3.30065318244463,2.9128997778460626,
+                       2.858656847875189,2.858656847875189,2.5,2.5,2.5,2.5,2.5,2.5]
 
     def __init__(self, board: chess.Board, use_nnue=False):
         self.board = board
@@ -106,7 +108,7 @@ class Searcher:
                 if(elapsed_time_ms  > self.time_limit * 0.3):
                     self.adjust_time_ratio += self.adjust_time()
                     elapsed_time_ms *= self.adjust_time_ratio
-                if(elapsed_time_ms  > self.time_limit * Searcher.expansion_ratio[search_depth]):
+                if(elapsed_time_ms  > self.time_limit / Searcher.expansion_ratio[search_depth]):
                     break #stop cause not enough time
 
                 self.counter_searched_nood = 0

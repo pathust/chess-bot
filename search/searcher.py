@@ -5,7 +5,7 @@ from search.move_ordering import MoveOrdering
 from search.repetition_table import RepetitionTable
 from search.transposition_table import TranspositionTable
 from evaluation.evaluation import Evaluation
-from nnue_evaluation import NNUEEvaluation
+
 class Searcher:
     # Constants
     transposition_table_size_mb = 64
@@ -15,7 +15,7 @@ class Searcher:
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
 
-    def __init__(self, board: chess.Board, use_nnue=False):
+    def __init__(self, board: chess.Board):
         self.board = board
         self.current_depth = 0
         self.best_move = chess.Move.null()
@@ -28,12 +28,13 @@ class Searcher:
         self.debug_info = ""
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
+        self.cancel_time = 0  # Thời điểm nhận tín hiệu hủy tìm kiếm
         
         # Initialize search_diagnostics
         self.search_diagnostics = SearchDiagnostics()
 
         # References and initialization
-        self.evaluation = NNUEEvaluation() if use_nnue else Evaluation()
+        self.evaluation = Evaluation()
         self.transposition_table = TranspositionTable(board, self.transposition_table_size_mb)
         self.move_orderer = MoveOrdering(self.transposition_table)
         self.repetition_table = RepetitionTable()
@@ -55,6 +56,7 @@ class Searcher:
         self.current_depth = 0
         self.debug_info = "Starting search with FEN " + self.board.fen()
         self.search_cancelled = False
+        self.cancel_time = 0
         self.search_diagnostics = SearchDiagnostics()
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
@@ -62,6 +64,14 @@ class Searcher:
         print('initialized')
         # Search
         self.run_iterative_deepening_search()
+        search_end_time = time.time()
+        print(f'SEARCH_END_TIME: {search_end_time:.6f}')
+        
+        # Nếu tìm kiếm bị hủy, hiện thông tin về độ trễ
+        if self.cancel_time > 0:
+            delay = search_end_time - self.cancel_time
+            print(f'CANCEL_TO_END_DELAY: {delay:.6f} seconds')
+            
         print('finished search')
         # Finish up
         print(self.best_move)
@@ -78,11 +88,10 @@ class Searcher:
 
     def run_iterative_deepening_search(self):
         for search_depth in range(1, 257):  # 256 is enough for any practical chess position
-            print(search_depth)
+            print(f"Starting depth {search_depth}")
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
             self.search_iteration_timer = time.time()
-
 
             self.search(search_depth, 0, self.negative_infinity, self.positive_infinity)
 
@@ -96,16 +105,18 @@ class Searcher:
                     self.debug_info += f"\nUsing partial search result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
 
                 self.debug_info += "\nSearch aborted"
+                print(f"Search aborted at depth {search_depth}")
                 break
             else:
                 self.current_depth = search_depth
                 self.best_move = self.best_move_this_iteration
                 self.best_eval = self.best_eval_this_iteration
 
-                self.debug_info += f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
+                iter_time = time.time() - self.search_iteration_timer
+                self.debug_info += f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval} (Time: {iter_time:.2f}s)"
                 if self.is_mate_score(self.best_eval):
                     self.debug_info += f" Mate in ply: {self.num_ply_to_mate_from_score(self.best_eval)}"
-                print(f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval}")
+                print(f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval} (Time: {iter_time:.2f}s)")
                 self.best_eval_this_iteration = -float('inf')
                 self.best_move_this_iteration = chess.Move.null()
 
@@ -121,6 +132,13 @@ class Searcher:
                     self.debug_info += "\nExiting search due to mate found within search depth"
                     break
 
+    def end_search(self):
+        """Được gọi để hủy tìm kiếm"""
+        # Ghi lại thời điểm nhận tín hiệu hủy
+        self.cancel_time = time.time()
+        print(f"CANCEL_SIGNAL_RECEIVED: {self.cancel_time:.6f}")
+        self.search_cancelled = True
+
     def search(self,
                ply_remaining,
                ply_from_root,
@@ -130,6 +148,7 @@ class Searcher:
                prev_move=None,
                prev_was_capture=False
     ):
+        # Kiểm tra cancel ngay lập tức
         if self.search_cancelled:
             return 0
 
@@ -214,6 +233,10 @@ class Searcher:
         best_move_in_this_position = chess.Move.null()
 
         for i, move in enumerate(legal_moves):
+            # Kiểm tra cancel trước mỗi nước đi ở cấp độ gốc
+            if ply_from_root == 0 and self.search_cancelled:
+                break
+                
             # Get move information
             captured_piece = self.board.piece_at(move.to_square)
             is_capture = captured_piece is not None
@@ -305,6 +328,10 @@ class Searcher:
                     self.best_move_this_iteration = move
                     self.best_eval_this_iteration = eval_score
                     self.has_searched_at_least_one_move = True
+                    
+                    # Ghi log khi tìm thấy nước đi mới ở root
+                    if self.best_move_this_iteration != chess.Move.null():
+                        print(f"Found new best move: {self.format_move(move)} Eval: {eval_score}")
 
         if ply_from_root > 0:
             self.repetition_table.try_pop()
@@ -321,6 +348,7 @@ class Searcher:
         return alpha
 
     def quiescence_search(self, alpha, beta):
+        # Thêm kiểm tra hủy
         if self.search_cancelled:
             return 0
 
@@ -345,6 +373,10 @@ class Searcher:
             self.board.push(move)
             eval_score = -self.quiescence_search(-beta, -alpha)
             self.board.pop()
+
+            # Kiểm tra hủy sau mỗi nước đi
+            if self.search_cancelled:
+                return 0
 
             if eval_score >= beta:
                 self.search_diagnostics.num_cutoffs += 1
@@ -406,10 +438,6 @@ class Searcher:
     def get_search_result(self):
         """Return the best move and evaluation"""
         return (self.best_move, self.best_eval)
-
-    def end_search(self):
-        """Cancel the search"""
-        self.search_cancelled = True
 
     def clear_for_new_position(self):
         """Clear search data for a new position"""

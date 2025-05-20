@@ -36,7 +36,6 @@ class MoveOrdering:
     def order_moves(self, hash_move, board, moves, opp_attacks, opp_pawn_attacks, in_qsearch, ply):
         """
         Order moves based on heuristics to improve alpha-beta pruning efficiency
-        Closely follows the C# implementation
         
         Parameters:
         - hash_move: Move from transposition table to prioritize

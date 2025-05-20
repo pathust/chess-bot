@@ -57,7 +57,7 @@ class AIWorker(QThread):
             if self.engine_num == 1:
                 self.chess_bot = ChessBot(initial_fen=self.fen)
             else:
-                self.chess_bot = ChessBot(use_nnue=True, initial_fen=self.fen)
+                self.chess_bot = ChessBot(initial_fen=self.fen)
             
             # Report initialization complete
             self.progress.emit(20)

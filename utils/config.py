@@ -45,15 +45,4 @@ class Config:
     MODE_AI_AI = "ai_ai"
     
     # AI thinking time estimation (ms per depth level)
-    AI_THINKING_TIME_ESTIMATES = {
-        1: 300,   # Very fast, basic evaluation
-        2: 800,   # Quick evaluation
-        3: 2000,  # Standard depth
-        4: 5000,  # Deep analysis
-        5: 12000  # Very deep analysis
-    }
-    
-    @classmethod
-    def get_estimated_thinking_time(cls, depth):
-        """Get the estimated thinking time for a given depth."""
-        return cls.AI_THINKING_TIME_ESTIMATES.get(depth, 2000)
+    AI_THINKING_TIME = 10000

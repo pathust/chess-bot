@@ -68,7 +68,7 @@ class AIWorker(QThread):
                 return
                 
             # Calculate the estimated thinking time based on depth
-            thinking_time = Config.get_estimated_thinking_time(self.depth)
+            thinking_time = Config.AI_THINKING_TIME
             
             # Get the best move with a custom callback to support cancellation
             result = ""

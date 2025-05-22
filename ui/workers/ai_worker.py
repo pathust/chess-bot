@@ -55,7 +55,7 @@ class AIWorker(QThread):
             
             # Create a fresh chess bot instance each time to prevent state issues
             if self.engine_num == 1:
-                self.chess_bot = ChessBot(initial_fen=self.fen)
+                self.chess_bot = ChessBot(initial_fen=self.fen, opening_book_path="resources/komodo.bin")
             else:
                 self.chess_bot = ChessBot(initial_fen=self.fen)
             

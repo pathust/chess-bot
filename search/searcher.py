@@ -4,8 +4,8 @@ import chess
 from search.move_ordering import MoveOrdering
 from search.repetition_table import RepetitionTable
 from search.transposition_table import TranspositionTable
+from search.opening_book import OpeningBook
 from evaluation.evaluation import Evaluation
-
 class Searcher:
     # Constants
     transposition_table_size_mb = 64
@@ -15,7 +15,7 @@ class Searcher:
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
 
-    def __init__(self, board: chess.Board):
+    def __init__(self, board: chess.Board, opening_book_path=None):
         self.board = board
         self.current_depth = 0
         self.best_move = chess.Move.null()
@@ -35,6 +35,7 @@ class Searcher:
 
         # References and initialization
         self.evaluation = Evaluation()
+        self.opening_book = OpeningBook(opening_book_path) if opening_book_path else None
         self.transposition_table = TranspositionTable(board, self.transposition_table_size_mb)
         self.move_orderer = MoveOrdering(self.transposition_table)
         self.repetition_table = RepetitionTable()
@@ -62,6 +63,16 @@ class Searcher:
         self.search_total_timer = time.time()
 
         print('initialized')
+        if self.opening_book:
+            book_move = self.opening_book.get_weighted_book_move(self.board)
+            if book_move:
+                print(f'Book move found: {book_move.uci()}')
+                self.best_move = book_move
+
+                # ✅ GỌI CALLBACK ở đây
+                if on_search_complete:
+                    on_search_complete(self.best_move)
+                return
         # Search
         self.run_iterative_deepening_search()
         search_end_time = time.time()
@@ -87,7 +98,7 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(1, 257):  # 256 is enough for any practical chess position
+        for search_depth in range(1, 20):
             print(f"Starting depth {search_depth}")
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"

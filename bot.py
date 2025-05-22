@@ -5,7 +5,7 @@ from search.searcher import Searcher
 import time 
 
 class ChessBot:
-    def __init__(self, initial_fen=None):
+    def __init__(self, initial_fen=None, opening_book_path=None):
         """
         Khởi tạo Bot cờ vua
         
@@ -20,7 +20,7 @@ class ChessBot:
 
         # Tạo searcher cho việc tìm kiếm nước đi tốt nhất
         print("Initializing searcher")
-        self.searcher = Searcher(self.board)
+        self.searcher = Searcher(self.board, opening_book_path=opening_book_path)
 
         # Trạng thái tìm kiếm
         self.is_thinking = False

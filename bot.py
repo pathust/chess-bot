@@ -97,19 +97,24 @@ class ChessBot:
             self.remain_time_black -= self.searcher.search_total_timer
     
   
-    def new_choose_think_time(self):
+    def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
         """
-        Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại trong trường hợp không chia thời gian theo giai đoạn
-        Lấy ý tưởng từ stock fish
+        Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại
+        
+        Args:
+            time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
+            time_remaining_black_ms (int): Thời gian còn lại của đen (ms)
+            increment_white_ms (int): Thời gian cộng thêm mỗi nước của trắng (ms)
+            increment_black_ms (int): Thời gian cộng thêm mỗi nước của đen (ms)
             
         Returns:
             int: Thời gian suy nghĩ được đề xuất (ms)
         """
-        # Lấy thời gian còn lại của bên đang đi
-        offset_time = 30 #thời gian dự tính để xử lý mỗi ply
-        my_time_remaining_ms = self.remain_time_white if self.board.turn else self.remain_time_black
-        my_increment_ms = self.increment_time -offset_time 
 
+        # Lấy thời gian còn lại của bên đang đi
+        my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
+        my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
+        offset_time = 30 #thời gian dự tính để xử lý mỗi ply
         centiMTG = 5051
 
         # Make sure timeLeft is > 0 since we may use it as a divisor
@@ -125,10 +130,7 @@ class ChessBot:
         optScale = min(0.0121431 + math.pow(self.board.ply() + 2.94693, 0.461073) * optConstant,
                             0.213035 * my_time_remaining_ms / timeLeft) * originalTimeAdjust
         
-        optScale = min (0.5,optScale)
-        #maxConstant  = max(3.3977 + 3.03950 * logTimeInSec, 2.94761)
-        #maxScale = min(6.67704, maxConstant + ply / 11.9847)
-        
+        optScale = min (0.5,optScale)        
         opt_time = optScale * my_time_remaining_ms
         return opt_time
 

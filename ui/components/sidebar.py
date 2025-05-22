@@ -20,10 +20,13 @@ from ui.components.controls import ControlButton, ResignButton, UndoButton
 class SavedGameManager:
     """Manages saving and loading chess games."""
     
+    # Update the SavedGameManager in ui/components/sidebar.py to include timer settings
+
     @staticmethod
-    def save_game(board, game_mode, turn, last_move_from, last_move_to, game_name=None, game_notes=None):
+    def save_game(board, game_mode, turn, last_move_from, last_move_to, 
+                  game_name=None, game_notes=None, timer_settings=None):
         """
-        Save the current game state to a file with enhanced error handling.
+        Save the current game state to a file with enhanced error handling and timer support.
         
         Args:
             board (chess.Board): The chess board to save
@@ -33,6 +36,7 @@ class SavedGameManager:
             last_move_to (tuple): The ending position of the last move
             game_name (str, optional): Custom name for the saved game
             game_notes (str, optional): Notes about the saved game
+            timer_settings (dict, optional): Timer configuration and current state
         
         Returns:
             tuple: (success: bool, file_path: str or None)
@@ -44,7 +48,7 @@ class SavedGameManager:
             
             # Create a comprehensive game state dictionary
             game_data = {
-                'version': '1.0',  # Add version for future compatibility
+                'version': '2.0',  # Updated version for timer support
                 'fen': board.fen(),
                 'mode': game_mode,
                 'turn': turn,
@@ -53,6 +57,17 @@ class SavedGameManager:
                 'move_history': [move.uci() for move in board.move_stack],
                 'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
+            
+            # Add timer settings if provided
+            if timer_settings:
+                game_data['timer_settings'] = {
+                    'enabled': timer_settings.get('enabled', False),
+                    'initial_white_time_ms': timer_settings.get('initial_white_time_ms', 0),
+                    'initial_black_time_ms': timer_settings.get('initial_black_time_ms', 0),
+                    'white_time_ms': timer_settings.get('white_time_ms', 0),
+                    'black_time_ms': timer_settings.get('black_time_ms', 0),
+                    'active_player': timer_settings.get('active_player', None)
+                }
             
             # Add optional metadata with validation
             if game_name and isinstance(game_name, str):

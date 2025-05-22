@@ -1,9 +1,12 @@
+# Update the ui/app.py file to handle time mode selection
+
 from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt5.QtGui import QColor, QFont, QPalette
 from ui.board import ChessBoard
 from ui.components.popups import StartScreen
 from ui.components.load_game_dialog import LoadGameDialog
 from ui.components.sidebar import SavedGameManager
+from ui.components.time_mode_dialog import TimeModeDialog
 
 class ChessApp(QApplication):
     def __init__(self, args):
@@ -45,8 +48,30 @@ class ChessApp(QApplication):
         if start_screen.exec_() == QDialog.Accepted:
             mode = start_screen.get_mode()
             if mode:
-                self.chess_window = ChessBoard(mode, self)
-                self.chess_window.show()
+                self.start_new_game_with_time_selection(mode)
+    
+    def start_new_game_with_time_selection(self, mode):
+        """Start a new game with time mode selection."""
+        # Show time mode dialog
+        time_dialog = TimeModeDialog()
+        
+        if time_dialog.exec_() == QDialog.Accepted:
+            is_time_mode, white_time_ms, black_time_ms = time_dialog.get_time_settings()
+            
+            # Create chess window with the selected mode
+            self.chess_window = ChessBoard(mode, self)
+            
+            # Setup time mode after window creation
+            self.chess_window.setup_time_mode(is_time_mode, white_time_ms, black_time_ms)
+            
+            # Start timer for human vs AI mode
+            if mode == "human_ai" and is_time_mode:
+                self.chess_window.switch_timer_to_player('human')
+            
+            self.chess_window.show()
+        else:
+            # User canceled time selection, go back to start screen
+            self.show_start_screen()
     
     def load_saved_game(self):
         """Show dialog to load a saved game"""
@@ -77,8 +102,45 @@ class ChessApp(QApplication):
                 self.chess_window.deleteLater()
                 self.chess_window = None
             
+            # Check if the loaded game has timer data
+            has_timer_data = 'timer_settings' in game_data
+            is_time_mode = False
+            white_time_ms = 0
+            black_time_ms = 0
+            
+            if has_timer_data:
+                timer_settings = game_data['timer_settings']
+                is_time_mode = timer_settings.get('enabled', False)
+                white_time_ms = timer_settings.get('white_time_ms', 0)
+                black_time_ms = timer_settings.get('black_time_ms', 0)
+            else:
+                # Ask user if they want to enable time mode for this loaded game
+                time_dialog = TimeModeDialog()
+                time_dialog.setWindowTitle("Time Control for Loaded Game")
+                
+                if time_dialog.exec_() == QDialog.Accepted:
+                    is_time_mode, white_time_ms, black_time_ms = time_dialog.get_time_settings()
+            
             # Create a new chess window with the loaded game data
             self.chess_window = ChessBoard(mode, self, game_data)
+            
+            # Setup time mode
+            self.chess_window.setup_time_mode(is_time_mode, white_time_ms, black_time_ms)
+            
+            # If time mode is enabled, start the timer for the current player
+            if is_time_mode:
+                current_player = game_data.get('turn', 'human')
+                if mode == "human_ai":
+                    if current_player == 'human':
+                        self.chess_window.switch_timer_to_player('human')
+                    else:
+                        self.chess_window.switch_timer_to_player('ai')
+                else:  # AI vs AI
+                    if current_player == 'ai1':
+                        self.chess_window.switch_timer_to_player('ai1')
+                    else:
+                        self.chess_window.switch_timer_to_player('ai2')
+            
             self.chess_window.show()
             
             # Get the load dialog and its parent (start screen)

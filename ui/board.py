@@ -11,14 +11,17 @@ from ui.components.popups import ResignConfirmationDialog, GameOverPopup
 import chess
 import sys
 import traceback
-
+import datetime
 import os
+
 from ui.components.board_components import ChessSquare, ThinkingIndicator
 from ui.components.history import MoveHistoryWidget
 from ui.components.sidebar import AIControlPanel, SavedGameManager
 from ui.components.popups import PawnPromotionDialog, GameOverPopup, SaveGameDialog
 from ui.components.animations import AnimatedLabel
 from ui.workers.ai_worker import AIWorker
+from ui.components.chess_timer import ChessTimer
+from ui.components.time_mode_dialog import TimeModeDialog
 
 def exception_hook(exctype, value, tb):
     print(f"Ngoại lệ không được xử lý: {exctype}")
@@ -26,6 +29,8 @@ def exception_hook(exctype, value, tb):
     traceback.print_tb(tb)
 
 class ChessBoard(QMainWindow):
+    # Fix the ChessBoard __init__ method to prevent double dialog
+
     def __init__(self, mode="human_ai", parent_app=None, load_game_data=None):
         super().__init__()
 
@@ -47,8 +52,8 @@ class ChessBoard(QMainWindow):
         else:
             self.setWindowTitle("Chess - AI vs AI")
             
-        self.setGeometry(100, 100, 1000, 700)  # Increased window size for better display
-        self.setMinimumSize(800, 600)  # Set minimum size to prevent too small windows
+        self.setGeometry(100, 100, 1000, 700)
+        self.setMinimumSize(800, 600)
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #2c3e50;
@@ -64,15 +69,15 @@ class ChessBoard(QMainWindow):
             self.turn = 'ai1'
             
         self.valid_moves = []
-        self.castling_moves = []  # Store castling moves separately for special highlighting
+        self.castling_moves = []
         self.last_move_from = None
         self.last_move_to = None
         
         self.ai_game_running = False
-        self.move_delay = 800  # Default animation speed
-        self.ai_depth = 3  # Default AI search depth
-        self.ai_worker = None  # For background AI computation
-        self.ai_computation_active = False  # Flag to track if AI is actively computing
+        self.move_delay = 800
+        self.ai_depth = 3
+        self.ai_worker = None
+        self.ai_computation_active = False
 
         # Create the main layout with splitter for resizable panels
         self.central_widget = QWidget(self)
@@ -85,7 +90,7 @@ class ChessBoard(QMainWindow):
 
         # Create a splitter for resizable sections
         self.main_splitter = QSplitter(Qt.Horizontal)
-        self.main_splitter.setHandleWidth(2)  # Thinner splitter handle
+        self.main_splitter.setHandleWidth(2)
         self.main_splitter.setStyleSheet("""
             QSplitter::handle {
                 background-color: #455a64;
@@ -97,6 +102,10 @@ class ChessBoard(QMainWindow):
         game_area = QWidget()
         game_layout = QVBoxLayout(game_area)
         game_layout.setSpacing(15)
+        
+        # Setup chess timer first
+        self.setup_timer()
+        game_layout.addWidget(self.chess_timer)
         
         # Create board container with a nice border
         board_container = QFrame()
@@ -120,34 +129,33 @@ class ChessBoard(QMainWindow):
         self.board_layout.setSpacing(0)
         self.board_layout.setContentsMargins(5, 5, 5, 5)
 
+        # Create squares and labels (existing code...)
         for j in range(8):
-            col_label = QLabel(chr(97 + j))  # 'a' through 'h'
+            col_label = QLabel(chr(97 + j))
             col_label.setAlignment(Qt.AlignCenter)
             col_label.setStyleSheet("color: white; font-weight: bold; font-size: 12pt;")
             self.board_layout.addWidget(col_label, 8, j)
             
         for i in range(8):
-            row_label = QLabel(str(8 - i))  # This ensures proper numbering from 8 to 1
+            row_label = QLabel(str(8 - i))
             row_label.setAlignment(Qt.AlignCenter)
             row_label.setStyleSheet("color: white; font-weight: bold; font-size: 12pt;")
             self.board_layout.addWidget(row_label, i, 8)
         
-        for i in range(9):  # 8 squares + 1 label column
+        for i in range(9):
             self.board_layout.setColumnMinimumWidth(i, 60)
-            if i < 9:  # 8 squares + 1 label row
+            if i < 9:
                 self.board_layout.setRowMinimumHeight(i, 60)
         
-        # Create the squares and labels
+        # Create the squares
         self.squares = []
-        # Add column labels (a-h) with improved visibility
         for j in range(8):
-            col_label = QLabel(chr(97 + j))  # 'a' through 'h'
+            col_label = QLabel(chr(97 + j))
             col_label.setAlignment(Qt.AlignCenter)
             col_label.setStyleSheet("color: white; font-weight: bold; font-size: 12pt;")
             self.board_layout.addWidget(col_label, 8, j)
             
-            # Add row labels (1-8) with improved visibility - FIXED ORDER
-            row_label = QLabel(str(8 - j))  # This ensures proper numbering from 8 to 1
+            row_label = QLabel(str(8 - j))
             row_label.setAlignment(Qt.AlignCenter)
             row_label.setStyleSheet("color: white; font-weight: bold; font-size: 12pt;")
             self.board_layout.addWidget(row_label, j, 8)
@@ -160,73 +168,58 @@ class ChessBoard(QMainWindow):
                 self.board_layout.addWidget(square, i, j)
                 row.append(square)
             self.squares.append(row)
-            
-        # Add the thinking indicator
 
         board_layout.addWidget(board_widget)
-    
-        # Create a space reservation for the thinking indicator
+
+        # Create thinking indicator
         indicator_space = QWidget()
-        indicator_space.setFixedHeight(60)  # Set a fixed height for indicator space
+        indicator_space.setFixedHeight(60)
         indicator_layout = QVBoxLayout(indicator_space)
         indicator_layout.setContentsMargins(0, 5, 0, 0)
         
-        # Add the thinking indicator to the reserved space
         self.thinking_indicator = ThinkingIndicator()
         indicator_layout.addWidget(self.thinking_indicator)
         
-        # Add the indicator space to the board layout
         board_layout.addWidget(indicator_space)
-        
         game_layout.addWidget(board_container)
         
-        # Create right sidebar for controls and move history
+        # Create right sidebar (existing code...)
         sidebar = QWidget()
-        sidebar.setMinimumWidth(250)  # Ensure sidebar has minimum width
+        sidebar.setMinimumWidth(250)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setSpacing(15)
         
-        # Create a nested splitter for sidebar elements
         sidebar_splitter = QSplitter(Qt.Vertical)
         sidebar_layout.addWidget(sidebar_splitter)
         
-        # Create and add move history widget
         self.move_history = MoveHistoryWidget()
         sidebar_splitter.addWidget(self.move_history)
         
-        # Add AI control panel
         self.control_panel = AIControlPanel()
         sidebar_splitter.addWidget(self.control_panel)
         
-        # Set initial splitter sizes for sidebar elements
         sidebar_splitter.setSizes([300, 300])
         
-        # Connect signals from control panel elements
+        # Connect control panel signals
         self.control_panel.start_button.clicked.connect(self.start_ai_game)
         self.control_panel.pause_button.clicked.connect(self.pause_ai_game)
         self.control_panel.reset_button.clicked.connect(self.reset_game)
         self.control_panel.home_button.clicked.connect(self.return_to_home)
-        self.control_panel.save_button.clicked.connect(self.save_game)  # Make sure this line exists
+        self.control_panel.save_button.clicked.connect(self.save_game)
         
-        # Disable pause button initially
         self.control_panel.pause_button.setEnabled(False)
+        self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
         
-        self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
-        self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
-        # Add everything to the main splitter
+        # Add to main splitter
         self.main_splitter.addWidget(game_area)
         self.main_splitter.addWidget(sidebar)
-        
-        # Set initial splitter sizes (75% game area, 25% sidebar)
         self.main_splitter.setSizes([700, 300])
         
-        # Hide AI control panel in Human vs AI mode
+        # Hide AI controls in Human vs AI mode
         if self.mode == "human_ai":
-            # Show only relevant controls for Human vs AI mode
             self.control_panel.start_button.hide()
             self.control_panel.pause_button.hide()
             
-            # Find and modify the title
             for i in range(self.control_panel.widget().layout().count()):
                 item = self.control_panel.widget().layout().itemAt(i)
                 if item.widget() and isinstance(item.widget(), QLabel):
@@ -241,43 +234,168 @@ class ChessBoard(QMainWindow):
         else:
             self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
         
-        # Set up timers for animations and AI moves
+        # Set up timers
         self.ai_timer = QTimer(self)
         self.ai_timer.timeout.connect(self.ai_vs_ai_step)
         
-        # Store piece images for animations
         self.animated_pieces = {}
-        
-        # Load custom chess piece symbols
         self.piece_symbols = self.initialize_piece_symbols()
         
-        # Initialize the board
-        self.update_board()
-
         sys.excepthook = exception_hook
 
+        # FIXED: Only show time dialog for NEW games, not loaded games
         if load_game_data:
             self.load_game_state(load_game_data)
         else:
-            # Initialize the board
+            # Initialize the board first
             self.update_board()
+            
+            # ONLY show time dialog for completely new games
+            # Use QTimer.singleShot to show dialog after UI is fully initialized
+            QTimer.singleShot(100, self.show_initial_time_dialog)
 
-        if load_game_data:
-            self.load_game_state(load_game_data)
+        self.setup_undo_button()
+
+    def show_initial_time_dialog(self):
+        """Show time mode dialog only once for new games."""
+        try:
+            result = self.show_time_mode_dialog()
+            if result == QDialog.Accepted:
+                # Timer is already set up via setup_time_mode direct call
+                if self.is_time_mode and self.mode == "human_ai":
+                    self.switch_timer_to_player('human')
+        except Exception as e:
+            print(f"Error showing time dialog: {str(e)}")
+            # Continue without time mode if dialog fails
+
+    def setup_timer(self):
+        """Setup the chess timer component."""
+        self.chess_timer = ChessTimer(self)
+        self.chess_timer.time_expired.connect(self.on_time_expired)
+        
+        # Timer state
+        self.is_time_mode = False
+        self.white_time_ms = 0
+        self.black_time_ms = 0
+
+    def show_time_mode_dialog(self):
+        """Show the time mode selection dialog - FIXED to prevent double popup."""
+        dialog = TimeModeDialog(self)
+        
+        # Don't connect the signal - handle the result directly
+        result = dialog.exec_()
+        
+        if result == QDialog.Accepted:
+            # Get settings directly instead of using signal
+            is_time_mode, white_time_ms, black_time_ms = dialog.get_time_settings()
+            self.setup_time_mode(is_time_mode, white_time_ms, black_time_ms)
+            return QDialog.Accepted
         else:
-            # Initialize the board
-            self.update_board()
-
-        # Add undo button functionality
-        self.setup_undo_button()  # Add this line here
+            return QDialog.Rejected
+    
+    def setup_time_mode(self, enabled, white_time_ms, black_time_ms):
+        """Setup time mode with specified settings."""
+        self.is_time_mode = enabled
+        self.white_time_ms = white_time_ms
+        self.black_time_ms = black_time_ms
+        
+        if enabled:
+            # Set player names based on game mode
+            if self.mode == "human_ai":
+                self.chess_timer.set_player_names("You (White)", "AI (Black)")
+            else:
+                self.chess_timer.set_player_names("AI 1 (White)", "AI 2 (Black)")
+        
+        self.chess_timer.set_time_mode(enabled, white_time_ms, black_time_ms)
+        
+        # Start timer for the current player if game is active
+        if enabled and not self.board.is_game_over():
+            current_player = 'white' if self.board.turn == chess.WHITE else 'black'
+            self.chess_timer.start_timer(current_player)
+    
+    def on_time_expired(self, player):
+        """Handle when a player's time expires."""
+        self.chess_timer.stop_timer()
+        
+        # Determine the winner
+        if player == 'white':
+            winner_text = "Black wins on time!"
+            result = '0-1'
+        else:
+            winner_text = "White wins on time!"
+            result = '1-0'
+        
+        # Stop any ongoing AI processes
+        if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
+            if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
+                self.ai_worker.terminate()
+                self.ai_worker = None
+                self.ai_computation_active = False
+        
+        # Stop AI game if running
+        if hasattr(self, 'ai_game_running') and self.ai_game_running:
+            self.ai_game_running = False
+            if hasattr(self, 'ai_timer') and self.ai_timer.isActive():
+                self.ai_timer.stop()
+        
+        # Force the board into a game over state
+        self.board.set_result(result)
+        
+        # Update the UI
+        self.thinking_indicator.stop_thinking()
+        self.thinking_indicator.show_status(f"Game Over - {winner_text}")
+        
+        # Show game over popup
+        self.show_game_over_popup(custom_message=winner_text)
+    
+    def start_player_timer(self, player):
+        """Start the timer for a specific player."""
+        if self.is_time_mode:
+            timer_player = 'white' if player in ['human', 'ai1'] else 'black'
+            self.chess_timer.start_timer(timer_player)
+    
+    def switch_timer_to_player(self, player):
+        """Switch the active timer to the specified player."""
+        if self.is_time_mode:
+            timer_player = 'white' if player in ['human', 'ai1'] else 'black'
+            self.chess_timer.switch_player(timer_player)
+    
+    def pause_timer(self):
+        """Pause the game timer."""
+        if self.is_time_mode:
+            self.chess_timer.pause_timer()
+    
+    def resume_timer(self):
+        """Resume the game timer."""
+        if self.is_time_mode:
+            self.chess_timer.resume_timer()
 
     def save_game(self):
-        """Save the current game state to a file with improved error handling"""
+        """Save the current game state to a file with improved error handling and timer support"""
         try:
             # Pause the game if it's running
             was_running = self.ai_game_running
             if was_running:
                 self.pause_ai_game()
+            
+            # Pause timer if active
+            timer_was_active = False
+            if self.is_time_mode and hasattr(self.chess_timer, 'update_timer'):
+                timer_was_active = self.chess_timer.update_timer.isActive()
+                self.chess_timer.pause_timer()
+            
+            # Prepare timer settings if in time mode
+            timer_settings = None
+            if self.is_time_mode:
+                white_time_ms, black_time_ms = self.chess_timer.get_remaining_times()
+                timer_settings = {
+                    'enabled': True,
+                    'initial_white_time_ms': self.white_time_ms,
+                    'initial_black_time_ms': self.black_time_ms,
+                    'white_time_ms': white_time_ms,
+                    'black_time_ms': black_time_ms,
+                    'active_player': self.chess_timer.active_player
+                }
             
             # Call the SavedGameManager to save the game
             try:
@@ -286,14 +404,16 @@ class ChessBoard(QMainWindow):
                     self.mode, 
                     self.turn,
                     self.last_move_from,
-                    self.last_move_to
+                    self.last_move_to,
+                    timer_settings=timer_settings
                 )
                 
                 if success:
                     # Track the state at which the game was saved
                     self.last_saved_state = {
                         'fen': self.board.fen(),
-                        'move_count': len(self.board.move_stack)
+                        'move_count': len(self.board.move_stack),
+                        'timer_state': timer_settings
                     }
                     
                     filename = os.path.basename(filepath)
@@ -308,6 +428,10 @@ class ChessBoard(QMainWindow):
                                 f"An error occurred while saving the game: {str(e)}")
                 print(f"Error saving game: {str(e)}")
                 traceback.print_exc()
+            
+            # Resume timer if it was active
+            if timer_was_active and self.is_time_mode:
+                self.chess_timer.resume_timer()
             
             # Resume the game if it was running
             if was_running:
@@ -325,7 +449,7 @@ class ChessBoard(QMainWindow):
             traceback.print_exc()
         
     def load_game_state(self, game_data):
-        """Load a saved game state"""
+        """Load a saved game state with timer support"""
         try:
             # Setup the board with the saved FEN position
             self.board = chess.Board(game_data['fen'])
@@ -337,6 +461,33 @@ class ChessBoard(QMainWindow):
             # Set the last move for highlighting
             self.last_move_from = game_data.get('last_move_from')
             self.last_move_to = game_data.get('last_move_to')
+            
+            # Load timer settings if available
+            timer_settings = game_data.get('timer_settings')
+            if timer_settings:
+                self.is_time_mode = timer_settings.get('enabled', False)
+                if self.is_time_mode:
+                    white_time_ms = timer_settings.get('white_time_ms', 0)
+                    black_time_ms = timer_settings.get('black_time_ms', 0)
+                    self.white_time_ms = timer_settings.get('initial_white_time_ms', white_time_ms)
+                    self.black_time_ms = timer_settings.get('initial_black_time_ms', black_time_ms)
+                    
+                    # Set player names based on game mode
+                    if self.mode == "human_ai":
+                        self.chess_timer.set_player_names("You (White)", "AI (Black)")
+                    else:
+                        self.chess_timer.set_player_names("AI 1 (White)", "AI 2 (Black)")
+                    
+                    # Setup timer with current remaining times
+                    self.chess_timer.set_time_mode(True, white_time_ms, black_time_ms)
+                    self.chess_timer.white_time_ms = white_time_ms
+                    self.chess_timer.black_time_ms = black_time_ms
+                    
+                    # Don't auto-start timer - let user decide when to resume
+                    active_player = timer_settings.get('active_player')
+                    if active_player:
+                        self.chess_timer.active_player = active_player
+                        self.chess_timer.update_active_player_display()
             
             # Rebuild move history
             self.move_history.clear_history()
@@ -414,6 +565,10 @@ class ChessBoard(QMainWindow):
             if hasattr(self, 'ai_timer') and self.ai_timer.isActive():
                 self.ai_timer.stop()
             
+            # Stop chess timer
+            if self.is_time_mode:
+                self.chess_timer.stop_timer()
+            
             # Cancel any AI computation
             if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
                 try:
@@ -476,12 +631,26 @@ class ChessBoard(QMainWindow):
                     
                     if reply == QMessageBox.Yes:
                         try:
+                            # Prepare timer settings if in time mode
+                            timer_settings = None
+                            if self.is_time_mode:
+                                white_time_ms, black_time_ms = self.chess_timer.get_remaining_times()
+                                timer_settings = {
+                                    'enabled': True,
+                                    'initial_white_time_ms': self.white_time_ms,
+                                    'initial_black_time_ms': self.black_time_ms,
+                                    'white_time_ms': white_time_ms,
+                                    'black_time_ms': black_time_ms,
+                                    'active_player': self.chess_timer.active_player
+                                }
+                            
                             success, _ = SavedGameManager.save_game(
                                 self.board, 
                                 self.mode, 
                                 self.turn,
                                 self.last_move_from,
-                                self.last_move_to
+                                self.last_move_to,
+                                timer_settings=timer_settings
                             )
                             if success:
                                 # Remember the state at which we saved
@@ -536,11 +705,17 @@ class ChessBoard(QMainWindow):
         self.control_panel.depth_value.setText(f"Current depth: {value}")
     
     def start_ai_game(self):
+        """Start AI vs AI game with timer support."""
         if not self.ai_game_running and not self.board.is_game_over() and not self.ai_computation_active:
             self.ai_game_running = True
             self.control_panel.start_button.setEnabled(False)
             self.control_panel.pause_button.setEnabled(True)
             self.turn = 'ai1' if self.board.turn == chess.WHITE else 'ai2'
+            
+            # Start timer for current player
+            if self.is_time_mode:
+                current_player = 'white' if self.turn == 'ai1' else 'black'
+                self.chess_timer.start_timer(current_player)
             
             # Clear the status label and show thinking indicator
             self.thinking_indicator.show_status("")
@@ -553,10 +728,14 @@ class ChessBoard(QMainWindow):
             self.ai_timer.start(self.move_delay)
     
     def pause_ai_game(self):
-        """Pause the AI vs AI game"""
+        """Pause the AI vs AI game with timer support."""
         self.ai_game_running = False
         self.ai_timer.stop()
         self.thinking_indicator.stop_thinking()
+        
+        # Pause the chess timer
+        if self.is_time_mode:
+            self.chess_timer.pause_timer()
         
         # Cancel any ongoing AI computation
         if self.ai_worker and self.ai_worker.isRunning():
@@ -568,11 +747,17 @@ class ChessBoard(QMainWindow):
         self.control_panel.pause_button.setEnabled(False)
         self.thinking_indicator.show_status("Game paused")
     
+    # Updated reset_game method to prevent double time dialog
+
     def reset_game(self):
-        """Reset the game to initial state"""
+        """Reset the game to initial state with timer support - FIXED."""
         self.ai_game_running = False
         self.ai_timer.stop()
         self.thinking_indicator.stop_thinking()
+        
+        # Stop and reset timer
+        if self.is_time_mode:
+            self.chess_timer.stop_timer()
         
         # Cancel any ongoing AI computation
         if self.ai_worker and self.ai_worker.isRunning():
@@ -589,11 +774,6 @@ class ChessBoard(QMainWindow):
         self.control_panel.start_button.setEnabled(True)
         self.control_panel.pause_button.setEnabled(False)
         
-        if self.mode == "human_ai":
-            self.thinking_indicator.show_status("Your turn")
-        else:
-            self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
-            
         # Clear selection and move indicators
         self.selected_square = None
         self.valid_moves = []
@@ -608,6 +788,33 @@ class ChessBoard(QMainWindow):
             self.popup.close()
             self.popup = None
         
+        # FIXED: Show time dialog after UI update with direct handling
+        def show_reset_time_dialog():
+            try:
+                result = self.show_time_mode_dialog()
+                if result == QDialog.Accepted:
+                    if self.mode == "human_ai":
+                        if self.is_time_mode:
+                            self.switch_timer_to_player('human')
+                        self.thinking_indicator.show_status("Your turn")
+                    else:
+                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+                else:
+                    # User canceled, keep current settings
+                    if self.mode == "human_ai":
+                        self.thinking_indicator.show_status("Your turn")
+                    else:
+                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+            except Exception as e:
+                print(f"Error in reset time dialog: {str(e)}")
+                if self.mode == "human_ai":
+                    self.thinking_indicator.show_status("Your turn")
+                else:
+                    self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+        
+        # Show time dialog after a short delay
+        QTimer.singleShot(200, show_reset_time_dialog)
+    
     def animate_piece_movement(self, from_pos, to_pos, piece_symbol, piece_color, capture=False, callback=None):
         """Animate a piece moving from one square to another"""
         # Create the animated piece (temporary overlay)
@@ -674,7 +881,7 @@ class ChessBoard(QMainWindow):
             self.ai_worker.start()
     
     def handle_ai_move_result(self, best_move_uci):
-        """Handle the result from the AI computation thread"""
+        """Handle the result from the AI computation thread with timer support."""
         # Reset the AI computation flag
         self.ai_computation_active = False
         
@@ -700,6 +907,8 @@ class ChessBoard(QMainWindow):
                     print(f"Error: No piece found at {move.from_square}")
                     self.thinking_indicator.stop_thinking()
                     self.ai_game_running = False
+                    if self.is_time_mode:
+                        self.chess_timer.stop_timer()
                     self.control_panel.start_button.setEnabled(True)
                     self.control_panel.pause_button.setEnabled(False)
                     self.thinking_indicator.show_status("Invalid move: No piece found")
@@ -718,6 +927,12 @@ class ChessBoard(QMainWindow):
                 
                 # Stop thinking indicator during animation
                 self.thinking_indicator.stop_thinking()
+                
+                # Switch timer to next player
+                next_turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                if self.is_time_mode:
+                    next_player = 'black' if next_turn == 'ai2' else 'white'
+                    self.chess_timer.switch_player(next_player)
                 
                 # Function to execute after animation completes
                 def after_animation():
@@ -749,14 +964,16 @@ class ChessBoard(QMainWindow):
                         # Check if game is over
                         if self.board.is_game_over():
                             self.ai_game_running = False
+                            if self.is_time_mode:
+                                self.chess_timer.stop_timer()
                             self.control_panel.start_button.setEnabled(False)
                             self.control_panel.pause_button.setEnabled(False)
                             self.show_game_over_popup()
                         else:
                             # Switch to next AI
-                            self.turn = 'ai2' if self.turn == 'ai1' else 'ai1'
+                            self.turn = next_turn
                             
-                            # Update status text (will be hidden when AI starts thinking)
+                            # Update status text
                             next_ai = "AI 1" if self.turn == 'ai1' else "AI 2"
                             self.thinking_indicator.start_thinking(next_ai)
                             self.thinking_indicator.show_status("")
@@ -766,6 +983,8 @@ class ChessBoard(QMainWindow):
                     except Exception as e:
                         print(f"Error in after_animation: {str(e)}")
                         self.ai_game_running = False
+                        if self.is_time_mode:
+                            self.chess_timer.stop_timer()
                         self.thinking_indicator.stop_thinking()
                         self.thinking_indicator.show_status(f"Error: {str(e)}")
                 
@@ -774,6 +993,8 @@ class ChessBoard(QMainWindow):
             except Exception as e:
                 print(f"Error handling AI move: {str(e)}")
                 self.ai_game_running = False
+                if self.is_time_mode:
+                    self.chess_timer.stop_timer()
                 self.thinking_indicator.stop_thinking()
                 self.control_panel.start_button.setEnabled(True)
                 self.control_panel.pause_button.setEnabled(False)
@@ -781,6 +1002,8 @@ class ChessBoard(QMainWindow):
         else:
             # No valid move found
             self.ai_game_running = False
+            if self.is_time_mode:
+                self.chess_timer.stop_timer()
             self.thinking_indicator.stop_thinking()
             self.control_panel.start_button.setEnabled(True)
             self.control_panel.pause_button.setEnabled(False)
@@ -936,7 +1159,7 @@ class ChessBoard(QMainWindow):
                         self.thinking_indicator.show_status("Press 'Start' to continue AI vs AI game")
 
     def player_move(self, i, j):
-        """Handle player move selection"""
+        """Handle player move selection with timer support."""
         if self.mode != "human_ai" or self.turn != 'human' or self.board.is_game_over() or self.ai_computation_active:
             return
             
@@ -971,7 +1194,6 @@ class ChessBoard(QMainWindow):
                     is_promotion = (piece and piece.piece_type == chess.PAWN and
                                 (chess.square_rank(square) == 0 or chess.square_rank(square) == 7))
 
-                    # Trong phương thức player_move
                     if is_promotion:
                         try:
                             dialog = PawnPromotionDialog(self)
@@ -980,15 +1202,15 @@ class ChessBoard(QMainWindow):
                                 move = chess.Move(from_square, square, 
                                                 promotion=chess.Piece.from_symbol(promotion_piece.upper()).piece_type)
                             else:
-                                # Người dùng đã hủy bỏ, đừng thực hiện nước đi
+                                # User canceled, don't make the move
                                 self.selected_square = None
                                 self.valid_moves = []
                                 self.castling_moves = []
                                 self.update_board()
                                 return
                         except Exception as e:
-                            print(f"Lỗi trong quá trình phong cấp: {str(e)}")
-                            # Mặc định phong cấp thành Hậu nếu có lỗi
+                            print(f"Error in pawn promotion: {str(e)}")
+                            # Default to queen promotion if error
                             move = chess.Move(from_square, square, promotion=chess.QUEEN)
                     
                     # Check if move is castling
@@ -1007,6 +1229,10 @@ class ChessBoard(QMainWindow):
                     self.selected_square = None
                     self.valid_moves = []
                     self.castling_moves = []
+                    
+                    # Switch timer to AI before starting animation
+                    if self.is_time_mode:
+                        self.switch_timer_to_player('ai')
                     
                     # Animate move
                     def after_player_move():
@@ -1047,6 +1273,8 @@ class ChessBoard(QMainWindow):
                             # Allow UI to update before AI starts computing
                             QTimer.singleShot(100, self.ai_move)
                         else:
+                            if self.is_time_mode:
+                                self.chess_timer.stop_timer()
                             self.show_game_over_popup()
                     
                     # Start animation
@@ -1069,7 +1297,7 @@ class ChessBoard(QMainWindow):
                 self.update_board()
 
     def ai_move(self):
-        """Calculate and execute the AI's move using a background thread"""
+        """Calculate and execute the AI's move using a background thread with timer support."""
         try:
             # Set flag to prevent overlapping AI computations
             self.ai_computation_active = True
@@ -1081,6 +1309,8 @@ class ChessBoard(QMainWindow):
             if self.board.is_game_over():
                 self.thinking_indicator.stop_thinking()
                 self.ai_computation_active = False
+                if self.is_time_mode:
+                    self.chess_timer.stop_timer()
                 self.show_game_over_popup()
                 return
 
@@ -1095,7 +1325,7 @@ class ChessBoard(QMainWindow):
             self.thinking_indicator.show_status(f"Error during AI move: {str(e)}")
     
     def handle_human_ai_move_result(self, best_move_uci):
-        """Handle the result of AI computation for human vs AI mode"""
+        """Handle the result of AI computation for human vs AI mode with timer support."""
         # Reset the AI computation flag
         self.ai_computation_active = False
         
@@ -1112,6 +1342,8 @@ class ChessBoard(QMainWindow):
                     print(f"Error: No piece found at {from_square}")
                     self.thinking_indicator.stop_thinking()
                     self.turn = 'human'
+                    if self.is_time_mode:
+                        self.switch_timer_to_player('human')
                     self.thinking_indicator.show_status("AI made an invalid move. Your turn.")
                     return
                     
@@ -1128,6 +1360,10 @@ class ChessBoard(QMainWindow):
                 
                 # Stop thinking indicator during animation
                 self.thinking_indicator.stop_thinking()
+                
+                # Switch timer back to human before animation
+                if self.is_time_mode:
+                    self.switch_timer_to_player('human')
                 
                 # Animate the move
                 def after_ai_move():
@@ -1159,15 +1395,19 @@ class ChessBoard(QMainWindow):
                         self.update_board()
                         self.turn = 'human'
 
-                        self.thinking_indicator.stop_thinking()  # First stop the "thinking" animation
+                        self.thinking_indicator.stop_thinking()
                         self.thinking_indicator.show_status("Your turn")
                         
                         # Check if game is over
                         if self.board.is_game_over():
+                            if self.is_time_mode:
+                                self.chess_timer.stop_timer()
                             self.show_game_over_popup()
                     except Exception as e:
                         print(f"Error after AI move: {str(e)}")
                         self.turn = 'human'
+                        if self.is_time_mode:
+                            self.switch_timer_to_player('human')
                         self.thinking_indicator.show_status("Your turn")
                 
                 # Start animation
@@ -1176,11 +1416,15 @@ class ChessBoard(QMainWindow):
                 self.thinking_indicator.stop_thinking()
                 self.thinking_indicator.show_status("AI could not find a valid move! Your turn.")
                 self.turn = 'human'
+                if self.is_time_mode:
+                    self.switch_timer_to_player('human')
         except Exception as e:
             print(f"Error in handle_human_ai_move_result: {str(e)}")
             self.thinking_indicator.stop_thinking()
             self.thinking_indicator.show_status("AI error. Your turn.")
             self.turn = 'human'
+            if self.is_time_mode:
+                self.switch_timer_to_player('human')
 
     def show_game_over_popup(self, custom_message=None):
         """Show a simple game over popup with retry and home options."""
@@ -1311,6 +1555,8 @@ class ChessBoard(QMainWindow):
                 # If we undid a human move (going from BLACK's turn to WHITE's turn)
                 if current_turn_before_undo == chess.BLACK and current_turn_after_undo == chess.WHITE:
                     self.turn = 'human'
+                    if self.is_time_mode:
+                        self.switch_timer_to_player('human')
                     
                 # If we undid an AI move (going from WHITE's turn to BLACK's turn)
                 elif current_turn_before_undo == chess.WHITE and current_turn_after_undo == chess.BLACK:
@@ -1319,9 +1565,13 @@ class ChessBoard(QMainWindow):
                         self.board.pop()
                         self.update_move_history_after_undo()
                         self.turn = 'human'
+                        if self.is_time_mode:
+                            self.switch_timer_to_player('human')
                     else:
                         # If no more moves to undo, we're at the start with BLACK to move
                         self.turn = 'ai'
+                        if self.is_time_mode:
+                            self.switch_timer_to_player('ai')
                         
                 # Clear any AI worker if it's running
                 if hasattr(self, 'ai_computation_active') and self.ai_computation_active:
@@ -1448,6 +1698,19 @@ class ChessBoard(QMainWindow):
                 game_name = save_dialog.get_game_name()
                 game_notes = save_dialog.get_game_notes()
                 
+                # Prepare timer settings if in time mode
+                timer_settings = None
+                if self.is_time_mode:
+                    white_time_ms, black_time_ms = self.chess_timer.get_remaining_times()
+                    timer_settings = {
+                        'enabled': True,
+                        'initial_white_time_ms': self.white_time_ms,
+                        'initial_black_time_ms': self.black_time_ms,
+                        'white_time_ms': white_time_ms,
+                        'black_time_ms': black_time_ms,
+                        'active_player': self.chess_timer.active_player
+                    }
+                
                 # Prepare game data with metadata
                 game_data = {
                     'fen': self.board.fen(),
@@ -1461,9 +1724,14 @@ class ChessBoard(QMainWindow):
                     'game_notes': game_notes
                 }
                 
+                if timer_settings:
+                    game_data['timer_settings'] = timer_settings
+                
                 # Call the SavedGameManager to save the game
                 try:
                     # Open file dialog to select save location
+                    from PyQt5.QtWidgets import QFileDialog
+                    import json
                     file_path, _ = QFileDialog.getSaveFileName(
                         self, 
                         "Save Game", 
@@ -1527,6 +1795,10 @@ class ChessBoard(QMainWindow):
                 self.ai_game_running = False
                 if hasattr(self, 'ai_timer') and self.ai_timer.isActive():
                     self.ai_timer.stop()
+                    
+            # Stop timer
+            if self.is_time_mode:
+                self.chess_timer.stop_timer()
                     
             # Stop thinking indicator
             if hasattr(self, 'thinking_indicator'):

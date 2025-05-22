@@ -17,7 +17,7 @@ class ChessTimer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setFixedHeight(120)  # Even bigger height to match the example
+        self.setFixedHeight(100)  # Much smaller height since we're using horizontal layout
         
         # Timer state
         self.white_time_ms = 0
@@ -52,31 +52,16 @@ class ChessTimer(QWidget):
         self.setGraphicsEffect(shadow)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 10, 20, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 15, 20, 15)  # Increased margins
+        layout.setSpacing(12)
         
         # NO TITLE - just timer displays
         timer_layout = QHBoxLayout()
-        timer_layout.setSpacing(20)
+        timer_layout.setSpacing(25)  # More space between timers
         
         # White player timer
         self.white_timer_frame = self.create_timer_display("White", True)
         timer_layout.addWidget(self.white_timer_frame)
-        
-        # VS separator - smaller
-        vs_label = QLabel("VS")
-        vs_label.setAlignment(Qt.AlignCenter)
-        vs_label.setStyleSheet("""
-            font-size: 10pt;
-            font-weight: bold;
-            color: #007bff;
-            background-color: #ffffff;
-            padding: 4px;
-            border: 1px solid #007bff;
-            border-radius: 3px;
-            max-width: 30px;
-        """)
-        timer_layout.addWidget(vs_label)
         
         # Black player timer  
         self.black_timer_frame = self.create_timer_display("Black", False)
@@ -88,11 +73,11 @@ class ChessTimer(QWidget):
         self.hide()
         
     def create_timer_display(self, player_name, is_white):
-        """Create a much larger and more visible timer display for a player."""
+        """Create a horizontal timer display with player name and time side by side."""
         frame = QFrame()
         frame.setFrameShape(QFrame.StyledPanel)
         frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        frame.setFixedHeight(90)  # Bigger timer boxes like in the example
+        frame.setFixedHeight(80)  # Smaller height since we're using horizontal layout
         
         # High contrast styling with MUCH better visibility
         if is_white:
@@ -101,7 +86,7 @@ class ChessTimer(QWidget):
                     background-color: #ffffff;
                     border: 4px solid #28a745;
                     border-radius: 12px;
-                    padding: 12px;
+                    padding: 8px;
                 }
             """)
             text_color = "#000000"
@@ -113,39 +98,46 @@ class ChessTimer(QWidget):
                     background-color: #495057;
                     border: 4px solid #ffffff;
                     border-radius: 12px;
-                    padding: 12px;
+                    padding: 8px;
                 }
             """)
             text_color = "#ffffff"
             time_color = "#ffffff"
             border_color = "#ffffff"
         
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(6)
+        # Use horizontal layout to place name and time side by side
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(8, 1, 8, 16)
+        layout.setSpacing(10)  # Reduce spacing to give more room for content
         
-        # Player name with better text - show "Player" and "AI"
+        # Player name on the left - make it wider to fit the text properly
         if is_white:
-            display_name = "Player"
+            display_name = "You (White)"  # Keep on single line but make box wider
         else:
-            display_name = "AI"
+            display_name = "AI (Black)"
             
         name_label = QLabel(display_name)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setStyleSheet(f"""
-            font-size: 14pt;
+            font-size: 15pt;
             font-weight: bold;
             color: {text_color};
             background-color: transparent;
-            padding: 3px;
+            padding: 8px;
+            margin: 2px;
+            border: 2px solid {border_color};
+            border-radius: 6px;
+            min-width: 100px;
+            max-width: 120px;
+            min-height: 35px;
         """)
         layout.addWidget(name_label)
         
-        # Time display with proper size and visibility
+        # Time display on the right - adjust width for better balance
         time_label = QLabel("00:00")
         time_label.setAlignment(Qt.AlignCenter)
         time_label.setStyleSheet(f"""
-            font-size: 16pt;
+            font-size: 20pt;
             font-weight: bold;
             font-family: 'Arial', 'Courier New', monospace;
             color: {time_color};
@@ -153,7 +145,9 @@ class ChessTimer(QWidget):
             padding: 8px;
             border: 2px solid {border_color};
             border-radius: 6px;
-            min-height: 30px;
+            min-height: 35px;
+            min-width: 85px;
+            max-width: 100px;
         """)
         layout.addWidget(time_label)
         
@@ -250,7 +244,7 @@ class ChessTimer(QWidget):
         # White timer styling based on time remaining
         if self.white_time_ms <= 30000:  # Less than 30 seconds - RED ALERT
             white_time_style = """
-                font-size: 16pt;
+                font-size: 20pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #ffffff;
@@ -258,11 +252,13 @@ class ChessTimer(QWidget):
                 padding: 8px;
                 border: 2px solid #c82333;
                 border-radius: 6px;
-                min-height: 30px;
+                min-height: 35px;
+                min-width: 85px;
+                max-width: 100px;
             """
         elif self.white_time_ms <= 60000:  # Less than 1 minute - ORANGE WARNING
             white_time_style = """
-                font-size: 16pt;
+                font-size: 20pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #000000;
@@ -270,11 +266,13 @@ class ChessTimer(QWidget):
                 padding: 8px;
                 border: 2px solid #e0a800;
                 border-radius: 6px;
-                min-height: 30px;
+                min-height: 35px;
+                min-width: 85px;
+                max-width: 100px;
             """
         else:  # Normal time - high contrast
             white_time_style = """
-                font-size: 16pt;
+                font-size: 20pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #000000;
@@ -282,13 +280,15 @@ class ChessTimer(QWidget):
                 padding: 8px;
                 border: 2px solid #28a745;
                 border-radius: 6px;
-                min-height: 30px;
+                min-height: 35px;
+                min-width: 85px;
+                max-width: 100px;
             """
             
         # Black timer styling based on time remaining
         if self.black_time_ms <= 30000:  # Less than 30 seconds - RED ALERT
             black_time_style = """
-                font-size: 16pt;
+                font-size: 20pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #ffffff;
@@ -296,11 +296,13 @@ class ChessTimer(QWidget):
                 padding: 8px;
                 border: 2px solid #c82333;
                 border-radius: 6px;
-                min-height: 30px;
+                min-height: 35px;
+                min-width: 85px;
+                max-width: 100px;
             """
         elif self.black_time_ms <= 60000:  # Less than 1 minute - ORANGE WARNING
             black_time_style = """
-                font-size: 16pt;
+                font-size: 20pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #000000;
@@ -308,11 +310,13 @@ class ChessTimer(QWidget):
                 padding: 8px;
                 border: 2px solid #e0a800;
                 border-radius: 6px;
-                min-height: 30px;
+                min-height: 35px;
+                min-width: 85px;
+                max-width: 100px;
             """
         else:  # Normal time - high contrast
             black_time_style = """
-                font-size: 16pt;
+                font-size: 20pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #ffffff;
@@ -320,7 +324,9 @@ class ChessTimer(QWidget):
                 padding: 8px;
                 border: 2px solid #ffffff;
                 border-radius: 6px;
-                min-height: 30px;
+                min-height: 35px;
+                min-width: 85px;
+                max-width: 100px;
             """
             
         self.white_time_label.setStyleSheet(white_time_style)
@@ -339,7 +345,7 @@ class ChessTimer(QWidget):
                     background-color: #ffffff;
                     border: 5px solid #007bff;
                     border-radius: 12px;
-                    padding: 12px;
+                    padding: 8px;
                 }
             """)
             self.black_timer_frame.setStyleSheet("""
@@ -347,7 +353,7 @@ class ChessTimer(QWidget):
                     background-color: #495057;
                     border: 4px solid #6c757d;
                     border-radius: 12px;
-                    padding: 12px;
+                    padding: 8px;
                 }
             """)
         else:
@@ -356,7 +362,7 @@ class ChessTimer(QWidget):
                     background-color: #ffffff;
                     border: 4px solid #6c757d;
                     border-radius: 12px;
-                    padding: 12px;
+                    padding: 8px;
                 }
             """)
             self.black_timer_frame.setStyleSheet("""
@@ -364,7 +370,7 @@ class ChessTimer(QWidget):
                     background-color: #495057;
                     border: 5px solid #007bff;
                     border-radius: 12px;
-                    padding: 12px;
+                    padding: 8px;
                 }
             """)
             
@@ -375,7 +381,7 @@ class ChessTimer(QWidget):
                 background-color: #ffffff;
                 border: 4px solid #28a745;
                 border-radius: 12px;
-                padding: 12px;
+                padding: 8px;
             }
         """)
         self.black_timer_frame.setStyleSheet("""
@@ -383,24 +389,7 @@ class ChessTimer(QWidget):
                 background-color: #495057;
                 border: 4px solid #ffffff;
                 border-radius: 12px;
-                padding: 12px;
-            }
-        """)
-        """Reset player displays to default high-contrast styling."""
-        self.white_timer_frame.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border: 4px solid #007bff;
-                border-radius: 12px;
-                padding: 12px;
-            }
-        """)
-        self.black_timer_frame.setStyleSheet("""
-            QFrame {
-                background-color: #343a40;
-                border: 4px solid #ffffff;
-                border-radius: 12px;
-                padding: 12px;
+                padding: 8px;
             }
         """)
         

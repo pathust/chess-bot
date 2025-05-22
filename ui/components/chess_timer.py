@@ -1,5 +1,5 @@
 """
-Improved Chess timer component with better UI visibility.
+Enhanced Chess timer component with much better visibility and larger UI elements.
 """
 
 from PyQt5.QtWidgets import (
@@ -10,14 +10,14 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QTime
 from PyQt5.QtGui import QFont, QColor, QPalette
 
 class ChessTimer(QWidget):
-    """Improved Chess timer widget with better visibility."""
+    """Enhanced Chess timer widget with much better visibility and larger UI."""
     
     time_expired = pyqtSignal(str)  # Emitted when a player's time expires
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setFixedHeight(140)  # Increased height for better visibility
+        self.setFixedHeight(120)  # Even bigger height to match the example
         
         # Timer state
         self.white_time_ms = 0
@@ -34,58 +34,47 @@ class ChessTimer(QWidget):
         self.setup_ui()
         
     def setup_ui(self):
-        """Setup the timer UI components with improved visibility."""
-        # Main container with better styling
+        """Setup the timer UI components with much better visibility."""
+        # Main container with high contrast styling - WHITE background
         self.setStyleSheet("""
             QWidget {
-                background-color: #34495e;
-                border-radius: 12px;
-                border: 3px solid #3498db;
+                background-color: #ffffff;
+                border-radius: 15px;
+                border: 4px solid #007bff;
             }
         """)
         
-        # Add shadow effect
+        # Add strong shadow effect
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 100))
-        shadow.setOffset(0, 6)
+        shadow.setBlurRadius(25)
+        shadow.setColor(QColor(0, 123, 255, 150))
+        shadow.setOffset(0, 8)
         self.setGraphicsEffect(shadow)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 15, 20, 15)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(10)
         
-        # Title with better visibility
-        self.title_label = QLabel("Game Timers")
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("""
-            font-size: 16pt;
-            font-weight: bold;
-            color: #ffffff;
-            background-color: #2c3e50;
-            padding: 8px;
-            border-radius: 6px;
-            border: 2px solid #3498db;
-        """)
-        layout.addWidget(self.title_label)
-        
-        # Timer displays with improved layout
+        # NO TITLE - just timer displays
         timer_layout = QHBoxLayout()
-        timer_layout.setSpacing(25)
+        timer_layout.setSpacing(20)
         
         # White player timer
         self.white_timer_frame = self.create_timer_display("White", True)
         timer_layout.addWidget(self.white_timer_frame)
         
-        # VS separator
+        # VS separator - smaller
         vs_label = QLabel("VS")
         vs_label.setAlignment(Qt.AlignCenter)
         vs_label.setStyleSheet("""
-            font-size: 14pt;
+            font-size: 10pt;
             font-weight: bold;
-            color: #3498db;
-            background-color: transparent;
-            padding: 5px;
+            color: #007bff;
+            background-color: #ffffff;
+            padding: 4px;
+            border: 1px solid #007bff;
+            border-radius: 3px;
+            max-width: 30px;
         """)
         timer_layout.addWidget(vs_label)
         
@@ -99,64 +88,72 @@ class ChessTimer(QWidget):
         self.hide()
         
     def create_timer_display(self, player_name, is_white):
-        """Create an improved timer display for a player."""
+        """Create a much larger and more visible timer display for a player."""
         frame = QFrame()
         frame.setFrameShape(QFrame.StyledPanel)
         frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        frame.setFixedHeight(80)  # Fixed height for consistency
+        frame.setFixedHeight(90)  # Bigger timer boxes like in the example
         
-        # Improved styling with better contrast
+        # High contrast styling with MUCH better visibility
         if is_white:
             frame.setStyleSheet("""
                 QFrame {
                     background-color: #ffffff;
-                    border: 3px solid #bdc3c7;
-                    border-radius: 10px;
-                    padding: 8px;
+                    border: 4px solid #28a745;
+                    border-radius: 12px;
+                    padding: 12px;
                 }
             """)
-            text_color = "#2c3e50"
-            time_color = "#2c3e50"
+            text_color = "#000000"
+            time_color = "#000000"
+            border_color = "#28a745"
         else:
             frame.setStyleSheet("""
                 QFrame {
-                    background-color: #2c3e50;
-                    border: 3px solid #bdc3c7;
-                    border-radius: 10px;
-                    padding: 8px;
+                    background-color: #495057;
+                    border: 4px solid #ffffff;
+                    border-radius: 12px;
+                    padding: 12px;
                 }
             """)
             text_color = "#ffffff"
             time_color = "#ffffff"
+            border_color = "#ffffff"
         
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(6)
         
-        # Player name with better styling
-        name_label = QLabel(player_name)
+        # Player name with better text - show "Player" and "AI"
+        if is_white:
+            display_name = "Player"
+        else:
+            display_name = "AI"
+            
+        name_label = QLabel(display_name)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setStyleSheet(f"""
-            font-size: 13pt;
+            font-size: 14pt;
             font-weight: bold;
             color: {text_color};
             background-color: transparent;
-            padding: 2px;
+            padding: 3px;
         """)
         layout.addWidget(name_label)
         
-        # Time display with much better visibility
+        # Time display with proper size and visibility
         time_label = QLabel("00:00")
         time_label.setAlignment(Qt.AlignCenter)
         time_label.setStyleSheet(f"""
-            font-size: 24pt;
+            font-size: 16pt;
             font-weight: bold;
             font-family: 'Arial', 'Courier New', monospace;
             color: {time_color};
             background-color: transparent;
-            padding: 4px;
-            border: 2px solid {text_color};
-            border-radius: 5px;
+            padding: 8px;
+            border: 2px solid {border_color};
+            border-radius: 6px;
+            min-height: 30px;
         """)
         layout.addWidget(time_label)
         
@@ -179,9 +176,8 @@ class ChessTimer(QWidget):
             self.black_time_ms = black_time_ms
             self.update_display()
             self.show()
-            # Update title with time information
-            time_str = self.format_time(white_time_ms)
-            self.title_label.setText(f"Game Timers - {time_str} each")
+            # Update title with time information - NO TITLE NOW
+            pass
         else:
             self.stop_timer()
             self.hide()
@@ -250,138 +246,161 @@ class ChessTimer(QWidget):
         self.update_time_colors()
         
     def update_time_colors(self):
-        """Update timer colors based on remaining time with better visibility."""
+        """Update timer colors based on remaining time with high visibility."""
         # White timer styling based on time remaining
-        if self.white_time_ms <= 30000:  # Less than 30 seconds
+        if self.white_time_ms <= 30000:  # Less than 30 seconds - RED ALERT
             white_time_style = """
-                font-size: 24pt;
+                font-size: 16pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #ffffff;
-                background-color: #e74c3c;
-                padding: 4px;
-                border: 2px solid #c0392b;
-                border-radius: 5px;
+                background-color: #dc3545;
+                padding: 8px;
+                border: 2px solid #c82333;
+                border-radius: 6px;
+                min-height: 30px;
             """
-        elif self.white_time_ms <= 60000:  # Less than 1 minute
+        elif self.white_time_ms <= 60000:  # Less than 1 minute - ORANGE WARNING
             white_time_style = """
-                font-size: 24pt;
+                font-size: 16pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
-                color: #ffffff;
-                background-color: #f39c12;
-                padding: 4px;
-                border: 2px solid #e67e22;
-                border-radius: 5px;
+                color: #000000;
+                background-color: #ffc107;
+                padding: 8px;
+                border: 2px solid #e0a800;
+                border-radius: 6px;
+                min-height: 30px;
             """
-        else:
+        else:  # Normal time - high contrast
             white_time_style = """
-                font-size: 24pt;
+                font-size: 16pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
-                color: #2c3e50;
+                color: #000000;
                 background-color: transparent;
-                padding: 4px;
-                border: 2px solid #2c3e50;
-                border-radius: 5px;
+                padding: 8px;
+                border: 2px solid #28a745;
+                border-radius: 6px;
+                min-height: 30px;
             """
             
         # Black timer styling based on time remaining
-        if self.black_time_ms <= 30000:  # Less than 30 seconds
+        if self.black_time_ms <= 30000:  # Less than 30 seconds - RED ALERT
             black_time_style = """
-                font-size: 24pt;
+                font-size: 16pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #ffffff;
-                background-color: #e74c3c;
-                padding: 4px;
-                border: 2px solid #c0392b;
-                border-radius: 5px;
+                background-color: #dc3545;
+                padding: 8px;
+                border: 2px solid #c82333;
+                border-radius: 6px;
+                min-height: 30px;
             """
-        elif self.black_time_ms <= 60000:  # Less than 1 minute
+        elif self.black_time_ms <= 60000:  # Less than 1 minute - ORANGE WARNING
             black_time_style = """
-                font-size: 24pt;
+                font-size: 16pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
-                color: #ffffff;
-                background-color: #f39c12;
-                padding: 4px;
-                border: 2px solid #e67e22;
-                border-radius: 5px;
+                color: #000000;
+                background-color: #ffc107;
+                padding: 8px;
+                border: 2px solid #e0a800;
+                border-radius: 6px;
+                min-height: 30px;
             """
-        else:
+        else:  # Normal time - high contrast
             black_time_style = """
-                font-size: 24pt;
+                font-size: 16pt;
                 font-weight: bold;
                 font-family: 'Arial', 'Courier New', monospace;
                 color: #ffffff;
                 background-color: transparent;
-                padding: 4px;
+                padding: 8px;
                 border: 2px solid #ffffff;
-                border-radius: 5px;
+                border-radius: 6px;
+                min-height: 30px;
             """
             
         self.white_time_label.setStyleSheet(white_time_style)
         self.black_time_label.setStyleSheet(black_time_style)
         
     def update_active_player_display(self):
-        """Update the display to highlight the active player with better visibility."""
+        """Update the display to highlight the active player with high visibility."""
         if not self.is_time_mode or not self.active_player:
             self.reset_player_displays()
             return
             
-        # Highlight active player's frame with glowing effect
+        # Highlight active player's frame with bigger white background
         if self.active_player == 'white':
             self.white_timer_frame.setStyleSheet("""
                 QFrame {
                     background-color: #ffffff;
-                    border: 4px solid #3498db;
-                    border-radius: 10px;
-                    padding: 8px;
+                    border: 5px solid #007bff;
+                    border-radius: 12px;
+                    padding: 12px;
                 }
             """)
             self.black_timer_frame.setStyleSheet("""
                 QFrame {
-                    background-color: #2c3e50;
-                    border: 3px solid #7f8c8d;
-                    border-radius: 10px;
-                    padding: 8px;
+                    background-color: #495057;
+                    border: 4px solid #6c757d;
+                    border-radius: 12px;
+                    padding: 12px;
                 }
             """)
         else:
             self.white_timer_frame.setStyleSheet("""
                 QFrame {
                     background-color: #ffffff;
-                    border: 3px solid #7f8c8d;
-                    border-radius: 10px;
-                    padding: 8px;
+                    border: 4px solid #6c757d;
+                    border-radius: 12px;
+                    padding: 12px;
                 }
             """)
             self.black_timer_frame.setStyleSheet("""
                 QFrame {
-                    background-color: #2c3e50;
-                    border: 4px solid #3498db;
-                    border-radius: 10px;
-                    padding: 8px;
+                    background-color: #495057;
+                    border: 5px solid #007bff;
+                    border-radius: 12px;
+                    padding: 12px;
                 }
             """)
             
     def reset_player_displays(self):
-        """Reset player displays to default styling."""
+        """Reset player displays to default styling with bigger white background."""
         self.white_timer_frame.setStyleSheet("""
             QFrame {
                 background-color: #ffffff;
-                border: 3px solid #bdc3c7;
-                border-radius: 10px;
-                padding: 8px;
+                border: 4px solid #28a745;
+                border-radius: 12px;
+                padding: 12px;
             }
         """)
         self.black_timer_frame.setStyleSheet("""
             QFrame {
-                background-color: #2c3e50;
-                border: 3px solid #bdc3c7;
-                border-radius: 10px;
-                padding: 8px;
+                background-color: #495057;
+                border: 4px solid #ffffff;
+                border-radius: 12px;
+                padding: 12px;
+            }
+        """)
+        """Reset player displays to default high-contrast styling."""
+        self.white_timer_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 4px solid #007bff;
+                border-radius: 12px;
+                padding: 12px;
+            }
+        """)
+        self.black_timer_frame.setStyleSheet("""
+            QFrame {
+                background-color: #343a40;
+                border: 4px solid #ffffff;
+                border-radius: 12px;
+                padding: 12px;
             }
         """)
         

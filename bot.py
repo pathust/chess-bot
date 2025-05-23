@@ -3,6 +3,7 @@ from threading import Event
 import chess
 from search.searcher import Searcher
 import time 
+import math
 
 class ChessBot:
     def __init__(self, initial_fen=None, opening_book_path=None):
@@ -88,20 +89,29 @@ class ChessBot:
         Returns:
             int: Thời gian suy nghĩ được đề xuất (ms)
         """
+
         # Lấy thời gian còn lại của bên đang đi
         my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
         my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
+        offset_time = 30 #thời gian dự tính để xử lý mỗi ply
+        centiMTG = 5051
 
-        # Tính thời gian suy nghĩ là một phần của thời gian còn lại
-        think_time_ms = my_time_remaining_ms / 40.0  # Chia cho 40 nước
+        # Make sure timeLeft is > 0 since we may use it as a divisor
+        timeLeft =my_time_remaining_ms+ (my_increment_ms * (centiMTG - 100) - 50 * (200 + centiMTG)) / 100       
+        originalTimeAdjust = 0.3128 * math.log10(timeLeft) - 0.4354
+        if originalTimeAdjust < 0:
+            originalTimeAdjust = 0.13
 
-        # Thêm một phần của thời gian cộng thêm
-        if my_time_remaining_ms > my_increment_ms * 2:
-            think_time_ms += my_increment_ms * 0.8
-
-        # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
-        min_think_time = min(50, my_time_remaining_ms * 0.25)
-        return int(max(min_think_time, think_time_ms))
+        # Calculate time constants based on current time left.
+        logTimeInSec = math.log10(my_time_remaining_ms / 1000.0)
+        optConstant  = min(0.0032116 + 0.000321123 * logTimeInSec, 0.00508017)
+        
+        optScale = min(0.0121431 + math.pow(self.board.ply() + 2.94693, 0.461073) * optConstant,
+                            0.213035 * my_time_remaining_ms / timeLeft) * originalTimeAdjust
+        
+        optScale = min (0.5,optScale)        
+        opt_time = optScale * my_time_remaining_ms
+        return opt_time
 
     def think_timed(self, time_ms):
         """

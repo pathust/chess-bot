@@ -95,5 +95,4 @@ class Entry:
 
     @staticmethod
     def get_size() -> int:
-        # Assuming that the size of the Entry is similar to the original in C#
         return 64  # Size of Entry in bytes

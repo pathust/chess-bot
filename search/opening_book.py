@@ -31,7 +31,7 @@ class OpeningBook:
             print(f"Error getting move from book: {e}")
 
     def get_weighted_book_move(self, board):
-        """Trả về một nước đi từ book theo trọng số `weight`."""
+        """Trả về một nước đi từ book với trọng số >= 90% trọng số lớn nhất, chọn ngẫu nhiên."""
         if not self.reader:
             return None
         try:
@@ -39,13 +39,20 @@ class OpeningBook:
             if not entries:
                 return None
 
+            # Lấy tất cả các nước đi và trọng số tương ứng
             moves = [entry.move for entry in entries]
             weights = [entry.weight for entry in entries]
 
-            if sum(weights) == 0:
-                return random.choice(moves)
+            # Xác định trọng số lớn nhất và ngưỡng 90%
+            max_weight = max(weights)
+            threshold = 0.9 * max_weight
 
-            return choices(moves, weights=weights, k=1)[0]
+            # Lọc những nước đi có trọng số >= 90% max_weight
+            filtered_moves = [move for move, weight in zip(moves, weights) if weight >= threshold]
+
+            # Trả về một nước đi ngẫu nhiên trong số đó
+            return random.choice(filtered_moves) if filtered_moves else None
+
         except Exception as e:
             print(f"Error selecting book move: {e}")
             return None

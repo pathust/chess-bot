@@ -19,7 +19,8 @@ from ui.components.history import MoveHistoryWidget
 from ui.components.sidebar import AIControlPanel, SavedGameManager
 from ui.components.popups import PawnPromotionDialog, GameOverPopup, SaveGameDialog
 from ui.components.animations import AnimatedLabel
-from ui.workers.ai_worker import AIWorker
+# from ui.workers.ai_worker import AIWorker
+from ui.workers.ai_worker import ResponsiveAIManager
 from ui.components.chess_timer import ChessTimer
 from ui.components.time_mode_dialog import TimeModeDialog
 
@@ -46,6 +47,8 @@ class ChessBoard(QMainWindow):
         self.popup = None
         self.mode = mode
         self.parent_app = parent_app
+        
+        self.ai_manager = ResponsiveAIManager(self)
         
         if self.mode == "human_ai":
             self.setWindowTitle("Chess - Human vs AI")
@@ -578,8 +581,11 @@ class ChessBoard(QMainWindow):
         return piece_symbols
     
     def return_to_home(self):
-        """Return to the start screen with improved robustness"""
+        """Return to the start screen - MULTIPROCESS VERSION."""
         try:
+            # Stop any AI computation first
+            self.stop_thinking()
+            
             # Force stop any running processes or timers
             if hasattr(self, 'ai_timer') and self.ai_timer.isActive():
                 self.ai_timer.stop()
@@ -588,37 +594,14 @@ class ChessBoard(QMainWindow):
             if self.is_time_mode:
                 self.chess_timer.stop_timer()
             
-            # Cancel any AI computation
-            if hasattr(self, 'ai_worker') and self.ai_worker and self.ai_worker.isRunning():
-                try:
-                    self.ai_worker.terminate()
-                    self.ai_worker.wait(300)  # Wait for termination with timeout
-                except Exception as e:
-                    print(f"Error terminating AI worker: {str(e)}")
-                finally:
-                    self.ai_worker = None
+            # Cancel any AI manager processes
+            if hasattr(self, 'ai_manager'):
+                self.ai_manager.cancel_computation()
             
-            # Reset AI computation flag regardless of state
+            # Reset flags
             self.ai_computation_active = False
-            
-            # Stop any ongoing animations
-            if hasattr(self, 'animated_pieces'):
-                for piece_id in list(self.animated_pieces.keys()):
-                    try:
-                        animated_piece = self.animated_pieces[piece_id]
-                        if animated_piece.animation.state() == QPropertyAnimation.Running:
-                            animated_piece.animation.stop()
-                        animated_piece.hide()
-                    except Exception as e:
-                        print(f"Error cleaning up animation: {str(e)}")
-                self.animated_pieces.clear()
-            
-            # Stop thinking indicator
-            if hasattr(self, 'thinking_indicator'):
-                self.thinking_indicator.stop_thinking()
-            
-            # Force set AI game to not running
             self.ai_game_running = False
+    
             
             # Clean up any popup
             if hasattr(self, 'popup') and self.popup:
@@ -700,13 +683,7 @@ class ChessBoard(QMainWindow):
             self.close()
             
         except Exception as e:
-            # Last resort error handling
-            import traceback
-            print(f"Critical error in return_to_home: {str(e)}")
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", 
-                                f"An error occurred while returning to home screen: {str(e)}")
-            
+            print(f"Error in return_to_home: {str(e)}")
             # Force return to home even after error
             if self.parent_app:
                 self.parent_app.show_start_screen()
@@ -747,7 +724,7 @@ class ChessBoard(QMainWindow):
             self.ai_timer.start(self.move_delay)
     
     def pause_ai_game(self):
-        """Pause the AI vs AI game with timer support."""
+        """Pause the AI vs AI game - MULTIPROCESS VERSION."""
         self.ai_game_running = False
         self.ai_timer.stop()
         self.thinking_indicator.stop_thinking()
@@ -757,11 +734,10 @@ class ChessBoard(QMainWindow):
             self.chess_timer.pause_timer()
         
         # Cancel any ongoing AI computation
-        if self.ai_worker and self.ai_worker.isRunning():
-            self.ai_worker.terminate()
-            self.ai_worker = None
-            self.ai_computation_active = False
-            
+        if hasattr(self, 'ai_manager'):
+            self.ai_manager.cancel_computation()
+        
+        self.ai_computation_active = False
         self.control_panel.start_button.setEnabled(True)
         self.control_panel.pause_button.setEnabled(False)
         self.thinking_indicator.show_status("Game paused")
@@ -769,7 +745,10 @@ class ChessBoard(QMainWindow):
     # Updated reset_game method to prevent double time dialog
 
     def reset_game(self):
-        """Reset the game to initial state with timer support - FIXED."""
+        """Reset the game to initial state - MULTIPROCESS VERSION."""
+        # Stop and cleanup AI processes first
+        self.stop_thinking()
+        
         self.ai_game_running = False
         self.ai_timer.stop()
         self.thinking_indicator.stop_thinking()
@@ -886,13 +865,12 @@ class ChessBoard(QMainWindow):
             callback()
     
     def ai_vs_ai_step(self):
-        """Execute a single step in the AI vs AI game with smooth animation"""
+        """Execute a single step in the AI vs AI game - COMPLETELY NON-BLOCKING."""
         if self.ai_game_running and not self.board.is_game_over() and not self.ai_computation_active:
             # Set flag to prevent overlapping computations
             self.ai_computation_active = True
             
             # Determine current player
-            current_color = "White" if self.board.turn == chess.WHITE else "Black"
             current_ai = "AI 1" if self.turn == 'ai1' else "AI 2"
             
             # Update thinking indicator
@@ -901,14 +879,51 @@ class ChessBoard(QMainWindow):
             # Stop the AI timer during calculation
             self.ai_timer.stop()
             
-            # Use AI worker thread to prevent GUI freezing
-            # Pass the appropriate bot instance
-            if self.turn == 'ai1':
-                self.ai_worker = AIWorker(self.ai_bot1, self.ai_depth)
-            else:
-                self.ai_worker = AIWorker(self.ai_bot2, self.ai_depth)
-            self.ai_worker.finished.connect(self.handle_ai_move_result)
-            self.ai_worker.start()
+            # Get current board state
+            board_fen = self.board.fen()
+            
+            # Define callbacks
+            def on_ai_move_ready(move_uci):
+                """Called when AI finds a move."""
+                self.ai_computation_active = False
+                if move_uci:
+                    self.handle_ai_move_result(move_uci)
+                else:
+                    self.handle_ai_vs_ai_error("AI could not find a valid move")
+            
+            def on_ai_error(error_msg):
+                """Called when AI has an error."""
+                print(f"AI vs AI Error: {error_msg}")
+                self.ai_computation_active = False
+                self.handle_ai_vs_ai_error(error_msg)
+            
+            # Start AI computation - UI stays responsive!
+            self.ai_manager.compute_move(
+                board_fen=board_fen,
+                depth=self.ai_depth,
+                time_ms=8000,  # 8 seconds for AI vs AI
+                on_finished=on_ai_move_ready,
+                on_error=on_ai_error
+            )
+        
+    def handle_ai_vs_ai_error(self, error_message):
+        """Handle AI vs AI computation errors."""
+        print(f"AI vs AI Error: {error_message}")
+        self.ai_computation_active = False
+        self.thinking_indicator.stop_thinking()
+        
+        # Try to continue with a random move
+        legal_moves = list(self.board.legal_moves)
+        if legal_moves:
+            import random
+            move = random.choice(legal_moves)
+            self.handle_ai_move_result(move.uci())
+        else:
+            # No legal moves - game should be over
+            self.ai_game_running = False
+            if self.is_time_mode:
+                self.chess_timer.stop_timer()
+            self.thinking_indicator.show_status("No legal moves available")
     
     def handle_ai_move_result(self, best_move_uci):
         """Handle the result from the AI computation thread with timer support."""
@@ -1336,33 +1351,88 @@ class ChessBoard(QMainWindow):
                 self.update_board()
 
     def ai_move(self):
-        """Calculate and execute the AI's move using a background thread with timer support."""
+        """Calculate and execute the AI's move using multiprocessing - COMPLETELY NON-BLOCKING."""
         try:
+            # Check if game is already over
+            if self.board.is_game_over():
+                self.thinking_indicator.stop_thinking()
+                if self.is_time_mode:
+                    self.chess_timer.stop_timer()
+                self.show_game_over_popup()
+                return
+
             # Set flag to prevent overlapping AI computations
             self.ai_computation_active = True
             
             # Update status with thinking animation
             self.thinking_indicator.start_thinking("AI")
             
-            # Check if game is already over
-            if self.board.is_game_over():
-                self.thinking_indicator.stop_thinking()
+            # Get current board state
+            board_fen = self.board.fen()
+            
+            # Define callbacks that will run on UI thread
+            def on_ai_move_ready(move_uci):
+                """Called when AI finds a move - runs on UI thread."""
                 self.ai_computation_active = False
-                if self.is_time_mode:
-                    self.chess_timer.stop_timer()
-                self.show_game_over_popup()
-                return
-
-            # Use a worker thread to prevent GUI freezing
-            # Pass the existing bot instance instead of FEN
-            self.ai_worker = AIWorker(self.ai_bot, self.ai_depth)
-            self.ai_worker.finished.connect(self.handle_human_ai_move_result)
-            self.ai_worker.start()
+                if move_uci:
+                    self.handle_human_ai_move_result(move_uci)
+                else:
+                    self.handle_ai_error("AI could not find a valid move")
+            
+            def on_ai_error(error_msg):
+                """Called when AI has an error - runs on UI thread."""
+                print(f"AI Error: {error_msg}")
+                self.ai_computation_active = False
+                self.handle_ai_error(error_msg)
+            
+            def on_ai_progress(percent):
+                """Called to update progress - runs on UI thread."""
+                # Keep thinking indicator active
+                if percent > 0 and not self.thinking_indicator.timer.isActive():
+                    self.thinking_indicator.start_thinking("AI")
+            
+            # Start AI computation in separate process - UI stays responsive!
+            self.ai_manager.compute_move(
+                board_fen=board_fen,
+                depth=self.ai_depth,
+                time_ms=10000,  # 10 seconds
+                on_finished=on_ai_move_ready,
+                on_error=on_ai_error,
+                on_progress=on_ai_progress
+            )
+            
+            print("AI computation started in background - UI remains responsive!")
             
         except Exception as e:
             self.thinking_indicator.stop_thinking()
             self.ai_computation_active = False
-            self.thinking_indicator.show_status(f"Error during AI move: {str(e)}")
+            self.thinking_indicator.show_status(f"Error starting AI move: {str(e)}")
+
+        
+    def handle_ai_error(self, error_message):
+        """Handle AI computation errors without crashing the game."""
+        print(f"AI Error: {error_message}")
+        self.ai_computation_active = False
+        self.thinking_indicator.stop_thinking()
+        
+        # Don't crash the game - make a random legal move instead
+        legal_moves = list(self.board.legal_moves)
+        if legal_moves:
+            import random
+            move = random.choice(legal_moves)
+            # Simulate the move result
+            self.handle_human_ai_move_result(move.uci())
+        else:
+            self.thinking_indicator.show_status("No legal moves available")
+            if self.is_time_mode:
+                self.switch_timer_to_player('human')
+    
+    def update_ai_progress(self, progress):
+        """Update AI thinking progress (optional visual feedback)."""
+        # You could update a progress bar here if desired
+        # For now, just ensure the thinking indicator is still active
+        if progress > 0 and not self.thinking_indicator.timer.isActive():
+            self.thinking_indicator.start_thinking("AI")
     
     def handle_human_ai_move_result(self, best_move_uci):
         """Handle the result of AI computation for human vs AI mode with timer support."""
@@ -1494,6 +1564,19 @@ class ChessBoard(QMainWindow):
             print(f"Error showing game over popup: {str(e)}")
             # If the popup fails, at least update the status
             self.thinking_indicator.show_status("Game Over!")
+    
+    def stop_thinking(self):
+        """Stop any ongoing AI computation - MULTIPROCESS VERSION."""
+        # Cancel any active AI computation
+        if hasattr(self, 'ai_manager'):
+            self.ai_manager.cancel_computation()
+        
+        # Reset flags
+        self.ai_computation_active = False
+        
+        # Stop thinking indicator
+        if hasattr(self, 'thinking_indicator'):
+            self.thinking_indicator.stop_thinking()
 
     def close_game(self):
         """Close the game window"""

@@ -44,7 +44,7 @@ class LichessBot:
         self.available_bots = []
         self.tried_bots = set()  # Track bots we've tried this round
         self.last_bot_refresh = 0
-        self.bot_refresh_interval = 300  # 5 minutes
+        self.bot_refresh_interval = 3600  # 60 minutes
         
         # Bot info
         self.bot_info = self.get_account_info()

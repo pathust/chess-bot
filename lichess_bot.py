@@ -664,7 +664,7 @@ class LichessBot:
 
 def main():
     """Main function to run the bot"""
-    API_TOKEN = "lip_n2QO0i6D9IlLSwPaVBxL"
+    API_TOKEN = "..."
     OPENING_BOOK_PATH = "resources/komodo.bin"
     
     # Test token

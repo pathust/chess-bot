@@ -24,40 +24,28 @@ class AIWorker(QThread):
     error = pyqtSignal(str)
     progress = pyqtSignal(int)
 
-    def __init__(self, fen, depth, engine_num=1, parent=None):
+    def __init__(self, chess_bot, depth, parent=None):
         """
         Initialize the AI worker.
         
         Args:
-            fen (str): FEN string representing the chess position
+            chess_bot (ChessBot): The chess bot instance to use for computation
             depth (int): Search depth for the AI
-            engine_num (int, optional): Which engine to use (1 or 2). Defaults to 1.
             parent (QObject, optional): Parent object. Defaults to None.
         """
         super().__init__(parent)
-        self.fen = fen
+        self.chess_bot = chess_bot  # Use existing bot instance
         self.depth = depth
-        self.engine_num = engine_num
         self._canceled = False
         self.mutex = QMutex()
         self.pause_condition = QWaitCondition()
         self._paused = False
-        self.chess_bot = None
         
     def run(self):
         """Execute the AI computation in a background thread."""
         try:
-            # Importing here to avoid circular imports
-            from bot import ChessBot
-            
             # Report starting progress
             self.progress.emit(10)
-            
-            # Create a fresh chess bot instance each time to prevent state issues
-            if self.engine_num == 1:
-                self.chess_bot = ChessBot(initial_fen=self.fen, opening_book_path="resources/komodo.bin")
-            else:
-                self.chess_bot = ChessBot(initial_fen=self.fen)
             
             # Report initialization complete
             self.progress.emit(20)
@@ -110,8 +98,8 @@ class AIWorker(QThread):
             # Validate the move if one was found
             if result:
                 try:
-                    # Parse the board and verify this is a legal move
-                    board = chess.Board(self.fen)
+                    # Get current board position from the bot
+                    board = self.chess_bot.board
                     move = chess.Move.from_uci(result)
                     
                     if move not in board.legal_moves:

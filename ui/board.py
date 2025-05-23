@@ -63,6 +63,18 @@ class ChessBoard(QMainWindow):
         self.board = chess.Board()
         self.selected_square = None
         
+        # Initialize chess bots ONCE here
+        from bot import ChessBot
+        if self.mode == "human_ai":
+            # One bot for human vs AI mode
+            self.ai_bot = ChessBot(opening_book_path="resources/komodo.bin")
+            self.turn = 'human'
+        else:
+            # Two bots for AI vs AI mode
+            self.ai_bot1 = ChessBot(opening_book_path="resources/komodo.bin")
+            self.ai_bot2 = ChessBot()  # Different bot without opening book for variety
+            self.turn = 'ai1'
+            
         if self.mode == "human_ai":
             self.turn = 'human'
         else:
@@ -458,6 +470,13 @@ class ChessBoard(QMainWindow):
             self.mode = game_data['mode']
             self.turn = game_data['turn']
             
+            # Update bot positions to match loaded game
+            if self.mode == "human_ai":
+                self.ai_bot.set_position(fen=game_data['fen'])
+            else:
+                self.ai_bot1.set_position(fen=game_data['fen'])
+                self.ai_bot2.set_position(fen=game_data['fen'])
+            
             # Set the last move for highlighting
             self.last_move_from = game_data.get('last_move_from')
             self.last_move_to = game_data.get('last_move_to')
@@ -766,9 +785,17 @@ class ChessBoard(QMainWindow):
             self.ai_computation_active = False
             
         self.board = chess.Board()
+        
+        # Reset bot positions
         if self.mode == "human_ai":
+            self.ai_bot.set_position()  # Reset to starting position
+            self.ai_bot.notify_new_game()  # Clear transposition tables
             self.turn = 'human'
         else:
+            self.ai_bot1.set_position()  # Reset to starting position
+            self.ai_bot1.notify_new_game()
+            self.ai_bot2.set_position()  # Reset to starting position
+            self.ai_bot2.notify_new_game()
             self.turn = 'ai1'
             
         self.control_panel.start_button.setEnabled(True)
@@ -875,8 +902,11 @@ class ChessBoard(QMainWindow):
             self.ai_timer.stop()
             
             # Use AI worker thread to prevent GUI freezing
-            engine_num = 1 if self.turn == 'ai1' else 2
-            self.ai_worker = AIWorker(self.board.fen(), self.ai_depth, engine_num)
+            # Pass the appropriate bot instance
+            if self.turn == 'ai1':
+                self.ai_worker = AIWorker(self.ai_bot1, self.ai_depth)
+            else:
+                self.ai_worker = AIWorker(self.ai_bot2, self.ai_depth)
             self.ai_worker.finished.connect(self.handle_ai_move_result)
             self.ai_worker.start()
     
@@ -939,6 +969,12 @@ class ChessBoard(QMainWindow):
                     try:
                         # Make the move on the actual board
                         self.board.push(move)
+                        
+                        # Update the appropriate bot's position
+                        if self.turn == 'ai1':
+                            self.ai_bot1.make_move(move.uci())
+                        else:
+                            self.ai_bot2.make_move(move.uci())
                         
                         # Add move to history
                         from_uci = chess.square_name(move.from_square)
@@ -1239,6 +1275,9 @@ class ChessBoard(QMainWindow):
                         # Execute move on the board
                         self.board.push(move)
                         
+                        if self.mode == "human_ai":
+                            self.ai_bot.make_move(move.uci())
+                        
                         # Add to move history
                         from_uci = chess.square_name(from_square)
                         to_uci = chess.square_name(square)
@@ -1315,7 +1354,8 @@ class ChessBoard(QMainWindow):
                 return
 
             # Use a worker thread to prevent GUI freezing
-            self.ai_worker = AIWorker(self.board.fen(), self.ai_depth)
+            # Pass the existing bot instance instead of FEN
+            self.ai_worker = AIWorker(self.ai_bot, self.ai_depth)
             self.ai_worker.finished.connect(self.handle_human_ai_move_result)
             self.ai_worker.start()
             
@@ -1370,6 +1410,10 @@ class ChessBoard(QMainWindow):
                     try:
                         # Execute move on the board
                         self.board.push(move)
+                        
+                        # Update bot's position to keep it in sync
+                        if self.mode == "human_ai":
+                            self.ai_bot.make_move(move.uci())
                         
                         # Add to move history
                         from_uci = chess.square_name(from_square)
@@ -1541,6 +1585,15 @@ class ChessBoard(QMainWindow):
             current_turn_before_undo = self.board.turn  # Store whose turn it is before undoing
             last_move = self.board.pop()
             
+            # Update bot position to match the undo
+            if self.mode == "human_ai":
+                # Reconstruct the position for the bot
+                self.ai_bot.set_position(fen=self.board.fen())
+            else:
+                # Update both bots in AI vs AI mode
+                self.ai_bot1.set_position(fen=self.board.fen())
+                self.ai_bot2.set_position(fen=self.board.fen())
+            
             # Update the move history
             self.update_move_history_after_undo()
             
@@ -1563,6 +1616,8 @@ class ChessBoard(QMainWindow):
                     # We need to undo one more move to get back to human's turn
                     if len(self.board.move_stack) > 0:
                         self.board.pop()
+                        # Update bot position again
+                        self.ai_bot.set_position(fen=self.board.fen())
                         self.update_move_history_after_undo()
                         self.turn = 'human'
                         if self.is_time_mode:

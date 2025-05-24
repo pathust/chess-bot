@@ -11,15 +11,61 @@ import logging
 import sys
 from functools import wraps
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('lichess_bot.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+class SafeFormatter(logging.Formatter):
+    """Safe formatter that handles Unicode characters on Windows"""
+    def format(self, record):
+        msg = super().format(record)
+        # Replace problematic Unicode characters for Windows console
+        if sys.platform.startswith('win'):
+            emoji_map = {
+                '🔍': '[SEARCH]',
+                '✅': '[SUCCESS]',
+                '❌': '[ERROR]',
+                '⚠️': '[WARNING]',
+                '🎯': '[TARGET]',
+                '🎮': '[GAME]',
+                '🏁': '[FINISH]',
+                '🤖': '[BOT]',
+                '📊': '[STATS]',
+                '🎨': '[COLOR]',
+                '🏆': '[RESULT]',
+                '⏱️': '[TIME]',
+                '🔄': '[REFRESH]',
+                '🚫': '[BLOCKED]',
+                '⏳': '[WAIT]',
+                '🧹': '[CLEANUP]',
+                '🚀': '[START]',
+                '🛑': '[STOP]',
+                '🎧': '[LISTEN]',
+                '📝': '[MOVE]',
+                '🌐': '[CONNECT]',
+                '👋': '[BYE]',
+                '👤': '[USER]',
+                '♟️': '[CHESS]',
+                '🤔': '[THINK]',
+                '🤝': '[DRAW]',
+                '📈': '[UP]'
+            }
+            for emoji, replacement in emoji_map.items():
+                msg = msg.replace(emoji, replacement)
+        return msg
+
+# Setup logging with safe formatter
+def setup_logging():
+    formatter = SafeFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    file_handler = logging.FileHandler('lichess_bot.log', encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[file_handler, console_handler]
+    )
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 class StrictRateLimiter:
@@ -50,11 +96,11 @@ class StrictRateLimiter:
             self.last_request_time = time.time()
     
     def handle_429_error(self):
-        """Handle 429 error - wait a full minute as per API docs"""
+        """Handle 429 error - wait 90 seconds as per requirement"""
         with self.lock:
-            logger.error("🚫 HTTP 429 - Rate limited! Waiting 60 seconds as per API rules")
-            self.blocked_until = time.time() + 60  # Block for exactly 60 seconds
-            time.sleep(60)
+            logger.error("🚫 HTTP 429 - Rate limited! Waiting 90 seconds")
+            self.blocked_until = time.time() + 90  # Chờ 90 giây theo yêu cầu
+            time.sleep(90)
 
 def strict_rate_limited(func):
     """Decorator to add STRICT rate limiting to API calls"""
@@ -66,7 +112,7 @@ def strict_rate_limited(func):
         try:
             result = func(self, *args, **kwargs)
             
-            # Handle 429 rate limit - WAIT FULL MINUTE
+            # Handle 429 rate limit - WAIT 90 SECONDS
             if hasattr(result, 'status_code') and result.status_code == 429:
                 if hasattr(self, 'rate_limiter'):
                     self.rate_limiter.handle_429_error()
@@ -102,7 +148,7 @@ class LichessBot:
         self.game_threads = {}
         self.is_challenging = False
         self.last_challenge_time = 0
-        self.challenge_cooldown = 180  # 3 minutes between challenge attempts
+        self.challenge_cooldown = 5  # 5 giây thay vì 180 giây
         self.running = True
         self.challenge_declined = False
         
@@ -120,8 +166,8 @@ class LichessBot:
         self.refresh_bot_list()
         
         # Start auto-challenger thread
-        # self.auto_challenge_thread = threading.Thread(target=self.auto_challenge_loop, daemon=True)
-        # self.auto_challenge_thread.start()
+        self.auto_challenge_thread = threading.Thread(target=self.auto_challenge_loop, daemon=True)
+        self.auto_challenge_thread.start()
         
     @strict_rate_limited
     def get_account_info(self) -> Dict[str, Any]:
@@ -269,7 +315,7 @@ class LichessBot:
     
     def auto_challenge_loop(self):
         """Continuously challenge bots when idle"""
-        logger.info("🎯 Auto-challenger started with STRICT rate limiting!")
+        logger.info("🎯 Auto-challenger started!")
         
         while self.running:
             try:
@@ -295,25 +341,11 @@ class LichessBot:
                         self.challenge_random_bot()
                     continue
                 
-                # Normal cooldown logic - LONGER WAITS
+                # Normal cooldown logic - chỉ 5 giây
                 time_since_last = time.time() - self.last_challenge_time
                 if time_since_last < self.challenge_cooldown:
                     remaining = int(self.challenge_cooldown - time_since_last)
-                    
-                    with tqdm(total=remaining, 
-                             desc="⏳ Waiting to challenge", 
-                             unit="s", 
-                             leave=False,
-                             ncols=80,
-                             bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}s') as pbar:
-                        
-                        for i in range(remaining):
-                            if not self.running or self.in_game or self.challenge_declined:
-                                break
-                            time.sleep(1)
-                            pbar.update(1)
-                    
-                    print("\r" + " " * 80 + "\r", end="", flush=True)
+                    time.sleep(remaining)
                     continue
                 
                 # Try to challenge if idle
@@ -342,12 +374,11 @@ class LichessBot:
         self.is_challenging = True
         
         try:
-            # Pre-select time control to get appropriate rating
+            # Time controls theo yêu cầu: 3+2, 15+1, 30+0
             time_controls = [
-                {"time": 180, "increment": 2},   # 3+2 (blitz)
-                {"time": 300, "increment": 0},   # 5+0 (blitz)
-                {"time": 300, "increment": 3},   # 5+3 (blitz)
-                {"time": 600, "increment": 0},   # 10+0 (rapid)
+                {"time": 180, "increment": 2},   # Cờ chớp 3+2
+                {"time": 900, "increment": 1},   # Cờ nhanh 15+1  
+                {"time": 1800, "increment": 0},  # Cờ chậm 30+0
             ]
             
             selected_time_control = random.choice(time_controls)
@@ -361,10 +392,11 @@ class LichessBot:
             # Get our rating for this time control
             my_rating = self.get_my_rating_for_time_control(category)
             
-            max_rating = max(1900, int(my_rating * 1.1))
-            min_rating = int(my_rating * 0.8)
+            # Rating range: 80% - 120% theo yêu cầu
+            max_rating = int(my_rating * 1.2)  # 120%
+            min_rating = int(my_rating * 0.8)  # 80%
             
-            logger.info(f"📊 My {category} rating: {my_rating}, Max opponent rating: {max_rating}")
+            logger.info(f"📊 My {category} rating: {my_rating}, Target range: {min_rating}-{max_rating}")
             
             # Get bots we haven't tried yet
             untried_bots = [bot for bot in self.available_bots if bot['username'] not in self.tried_bots]
@@ -379,45 +411,32 @@ class LichessBot:
                 logger.warning("❌ No bots available")
                 return
             
-            # Filter bots with rating < 110% of our rating for this time control
-            filtered_bots = [bot for bot in untried_bots if bot.get('rating', 1500) < max_rating]
+            # Lọc bot theo rating range 80%-120%
+            filtered_bots = [bot for bot in untried_bots 
+                            if min_rating <= bot.get('rating', 1500) <= max_rating]
             
             if not filtered_bots:
-                logger.warning(f"❌ No bots with rating < {max_rating} available")
+                logger.warning(f"❌ No bots in range {min_rating}-{max_rating}")
                 self.tried_bots.clear()
-                filtered_bots = [bot for bot in self.available_bots if bot.get('rating', 1500) < max_rating]
-                
-                if not filtered_bots:
-                    logger.warning(f"❌ No suitable bots found - REFRESHING ACCOUNT INFO")
-                    self.refresh_account_info()
-                    return
+                return
             
-            # Sort by rating and pick suitable ones
-            sorted_bots = sorted(filtered_bots, key=lambda x: x['rating'])
-            preferred_bots = [bot for bot in sorted_bots if min_rating <= bot.get('rating', 1500) <= max_rating]
-            suitable_bots = preferred_bots if preferred_bots else sorted_bots
+            # Random shuffle những bot này
+            random.shuffle(filtered_bots)
             
-            # ONLY TRY ONE BOT to minimize API calls
-            if suitable_bots:
-                bot = random.choice(suitable_bots)
-                self.tried_bots.add(bot['username'])
-                
-                rating = bot.get('rating', 'N/A')
-                rating_percent = (rating / my_rating * 100) if my_rating > 0 else 100
-                logger.info(f"🔍 Trying {bot['username']} (rating: {rating}, {rating_percent:.0f}% of my {category})")
-                
-                # Challenge with the pre-selected time control
-                if self.try_challenge_bot_with_time_control(bot, selected_time_control):
-                    logger.info(f"✅ Successfully challenged {bot['username']} (rating: {rating})")
-                    return
-                else:
-                    logger.warning("❌ Challenge attempt failed")
+            # Challenge bot đầu tiên
+            bot = filtered_bots[0]
+            self.tried_bots.add(bot['username'])
             
-            # If challenge failed, wait longer before trying again
-            logger.warning("❌ Challenge failed - waiting before refresh")
-            time.sleep(60)  # Wait 1 minute before refresh
-            self.refresh_account_info()
-            self.tried_bots.clear()
+            rating = bot.get('rating', 'N/A')
+            rating_percent = (rating / my_rating * 100) if my_rating > 0 else 100
+            logger.info(f"🎯 Challenging {bot['username']} (rating: {rating}, {rating_percent:.0f}% of my {category})")
+            
+            # Challenge with the pre-selected time control
+            if self.try_challenge_bot_with_time_control(bot, selected_time_control):
+                logger.info(f"✅ Successfully challenged {bot['username']} (rating: {rating})")
+                return
+            else:
+                logger.warning("❌ Challenge attempt failed")
                         
         finally:
             self.is_challenging = False
@@ -525,23 +544,18 @@ class LichessBot:
             
             self.cleanup_game(game_id)
             self.tried_bots.clear()
-            self.last_challenge_time = time.time() - self.challenge_cooldown + 30  # Wait 30s before next challenge
+            
+            # Đợi 5s sau đó thực hiện lại quá trình thách đấu
+            self.last_challenge_time = time.time() - self.challenge_cooldown + 5
             
         elif event_type == 'challenge':
             challenge = event['challenge']
             challenger_name = challenge.get('challenger', {}).get('name', '')
             
-            if challenger_name.lower() == self.bot_info.get('username', '').lower():
-                return
+            # Từ chối tất cả challenge theo yêu cầu
+            logger.info(f"🚫 Auto-declining challenge from {challenger_name}")
+            self.decline_challenge(challenge['id'])
             
-            # Only accept if not in game
-            if self.in_game:
-                logger.info(f"🚫 Declining challenge from {challenger_name} - already in game")
-                self.decline_challenge(challenge['id'])
-                return
-                
-            self.handle_challenge(challenge)
-        
         elif event_type == 'challengeDeclined':
             challenge_data = event.get('challenge', {})
             challenger = challenge_data.get('challenger', {}).get('name', 'Unknown')
@@ -846,7 +860,7 @@ class LichessBot:
         """Start the bot"""
         logger.info("🚀 Lichess bot started!")
         logger.info(f"👤 Account: {self.bot_info.get('username')}")
-        logger.info("🎯 STRICT mode: Only ONE request at a time, 60s wait on 429")
+        logger.info("🎯 Auto-challenger enabled with 90s wait on 429")
         
         try:
             self.stream_events()
@@ -867,7 +881,12 @@ class LichessBot:
 
 def main():
     """Main function to run the bot"""
-    API_TOKEN = "lip_e9u8kkPfxMZbq1K7IETF"
+    # Set UTF-8 encoding for Windows
+    if sys.platform.startswith('win'):
+        import os
+        os.environ['PYTHONIOENCODING'] = 'utf-8'
+    
+    API_TOKEN = "..."  # Thay bằng token của bạn
     OPENING_BOOK_PATH = "resources/komodo.bin"
     
     # Test token

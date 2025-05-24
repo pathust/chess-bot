@@ -111,7 +111,7 @@ class ChessBot:
         
         optScale = min (0.5,optScale)        
         opt_time = optScale * my_time_remaining_ms
-        return min(opt_time, timeLeft * 0.03)
+        return min(opt_time, max(10, timeLeft * 0.03))
 
     def think_timed(self, time_ms):
         """

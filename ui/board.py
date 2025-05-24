@@ -258,30 +258,16 @@ class ChessBoard(QMainWindow):
         
         sys.excepthook = exception_hook
 
-        # FIXED: Only show time dialog for NEW games, not loaded games
+        # CRITICAL FIX: Only show time dialog for NEW games from app.py
+        # Don't show any dialog here if load_game_data is provided
         if load_game_data:
             self.load_game_state(load_game_data)
         else:
-            # Initialize the board first
+            # Initialize the board for new games
             self.update_board()
-            
-            # ONLY show time dialog for completely new games
-            # Use QTimer.singleShot to show dialog after UI is fully initialized
-            QTimer.singleShot(100, self.show_initial_time_dialog)
+            # Time dialog will be handled by app.py after window creation
 
         self.setup_undo_button()
-
-    def show_initial_time_dialog(self):
-        """Show time mode dialog only once for new games."""
-        try:
-            result = self.show_time_mode_dialog()
-            if result == QDialog.Accepted:
-                # Timer is already set up via setup_time_mode direct call
-                if self.is_time_mode and self.mode == "human_ai":
-                    self.switch_timer_to_player('human')
-        except Exception as e:
-            print(f"Error showing time dialog: {str(e)}")
-            # Continue without time mode if dialog fails
 
     def setup_timer(self):
         """Setup the chess timer component."""
@@ -293,20 +279,6 @@ class ChessBoard(QMainWindow):
         self.white_time_ms = 0
         self.black_time_ms = 0
 
-    def show_time_mode_dialog(self):
-        """Show the time mode selection dialog - FIXED to prevent double popup."""
-        dialog = TimeModeDialog(self)
-        
-        # Don't connect the signal - handle the result directly
-        result = dialog.exec_()
-        
-        if result == QDialog.Accepted:
-            # Get settings directly instead of using signal - NOW WITH INCREMENT
-            is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms = dialog.get_time_settings()
-            self.setup_time_mode(is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms)
-            return QDialog.Accepted
-        else:
-            return QDialog.Rejected
     
     def setup_time_mode(self, enabled, white_time_ms, black_time_ms, white_inc_ms=3000, black_inc_ms=3000):
         """Setup time mode with specified settings including increments."""
@@ -807,32 +779,17 @@ class ChessBoard(QMainWindow):
             self.popup.close()
             self.popup = None
         
-        # FIXED: Show time dialog after UI update with direct handling
-        def show_reset_time_dialog():
-            try:
-                result = self.show_time_mode_dialog()
-                if result == QDialog.Accepted:
-                    if self.mode == "human_ai":
-                        if self.is_time_mode:
-                            self.switch_timer_to_player('human')
-                        self.thinking_indicator.show_status("Your turn")
-                    else:
-                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
-                else:
-                    # User canceled, keep current settings
-                    if self.mode == "human_ai":
-                        self.thinking_indicator.show_status("Your turn")
-                    else:
-                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
-            except Exception as e:
-                print(f"Error in reset time dialog: {str(e)}")
-                if self.mode == "human_ai":
-                    self.thinking_indicator.show_status("Your turn")
-                else:
-                    self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
-        
-        # Show time dialog after a short delay
-        QTimer.singleShot(200, show_reset_time_dialog)
+        # FIXED: Show time dialog from app.py level, not here
+        if self.parent_app:
+            # Let app.py handle the time dialog
+            QTimer.singleShot(200, lambda: self.parent_app.start_new_game_with_time_selection(self.mode))
+            self.close()  # Close current window
+        else:
+            # Fallback for standalone usage
+            if self.mode == "human_ai":
+                self.thinking_indicator.show_status("Your turn")
+            else:
+                self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
     
     def animate_piece_movement(self, from_pos, to_pos, piece_symbol, piece_color, capture=False, callback=None):
         """Animate a piece moving from one square to another"""

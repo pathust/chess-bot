@@ -52,7 +52,7 @@ class ChessApp(QApplication):
     
     def start_new_game_with_time_selection(self, mode):
         """Start a new game with time mode selection."""
-        # Show time mode dialog
+        # Show time mode dialog ONLY ONCE
         time_dialog = TimeModeDialog()
         
         if time_dialog.exec_() == QDialog.Accepted:

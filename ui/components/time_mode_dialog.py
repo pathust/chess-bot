@@ -227,16 +227,6 @@ class TimeModeDialog(QDialog):
             
         time_settings_layout.addWidget(presets_container)
         
-        # Custom time section with small controls
-        custom_label = QLabel("🔧 Custom Time (per player):")
-        custom_label.setStyleSheet("""
-            font-size: 12pt; 
-            color: #000000; 
-            margin-top: 8px; 
-            margin-bottom: 4px;
-            font-weight: bold;
-        """)
-        time_settings_layout.addWidget(custom_label)
         
         # Custom time inputs with small controls
         custom_container = QWidget()

@@ -97,7 +97,7 @@ class ChessBot:
         centiMTG = 5051
 
         # Make sure timeLeft is > 0 since we may use it as a divisor
-        timeLeft =my_time_remaining_ms+ (my_increment_ms * (centiMTG - 100) - 50 * (200 + centiMTG)) / 100       
+        timeLeft =max (5, my_time_remaining_ms+ (my_increment_ms * (centiMTG - 100) - offset_time * (200 + centiMTG)) / 100)   
         originalTimeAdjust = 0.3128 * math.log10(timeLeft) - 0.4354
         if originalTimeAdjust < 0:
             originalTimeAdjust = 0.13
@@ -111,7 +111,7 @@ class ChessBot:
         
         optScale = min (0.5,optScale)        
         opt_time = optScale * my_time_remaining_ms
-        return opt_time
+        return min(opt_time, timeLeft * 0.03)
 
     def think_timed(self, time_ms):
         """

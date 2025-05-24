@@ -9,6 +9,7 @@ from bot import ChessBot
 from tqdm import tqdm
 import logging
 import sys
+from functools import wraps
 
 # Setup logging
 logging.basicConfig(
@@ -21,15 +22,78 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class StrictRateLimiter:
+    def __init__(self):
+        self.last_request_time = 0
+        self.min_interval = 3.0  # 3 seconds between requests (conservative)
+        self.lock = threading.Lock()
+        self.blocked_until = 0  # Track when we can resume after 429
+    
+    def wait_if_needed(self):
+        """Wait if needed to respect rate limits - ONLY ONE REQUEST AT A TIME"""
+        with self.lock:
+            current_time = time.time()
+            
+            # Check if we're still blocked from a 429 error
+            if current_time < self.blocked_until:
+                wait_time = self.blocked_until - current_time
+                logger.warning(f"⏳ Still blocked from 429 error - waiting {wait_time:.1f}s more")
+                time.sleep(wait_time)
+            
+            # Ensure minimum interval between requests
+            time_since_last = current_time - self.last_request_time
+            if time_since_last < self.min_interval:
+                sleep_time = self.min_interval - time_since_last
+                logger.debug(f"⏱️ Rate limiting: waiting {sleep_time:.2f}s")
+                time.sleep(sleep_time)
+            
+            self.last_request_time = time.time()
+    
+    def handle_429_error(self):
+        """Handle 429 error - wait a full minute as per API docs"""
+        with self.lock:
+            logger.error("🚫 HTTP 429 - Rate limited! Waiting 60 seconds as per API rules")
+            self.blocked_until = time.time() + 60  # Block for exactly 60 seconds
+            time.sleep(60)
+
+def strict_rate_limited(func):
+    """Decorator to add STRICT rate limiting to API calls"""
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if hasattr(self, 'rate_limiter'):
+            self.rate_limiter.wait_if_needed()
+        
+        try:
+            result = func(self, *args, **kwargs)
+            
+            # Handle 429 rate limit - WAIT FULL MINUTE
+            if hasattr(result, 'status_code') and result.status_code == 429:
+                if hasattr(self, 'rate_limiter'):
+                    self.rate_limiter.handle_429_error()
+                # Retry ONCE after waiting
+                self.rate_limiter.wait_if_needed()
+                result = func(self, *args, **kwargs)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"API call error: {e}")
+            raise
+    
+    return wrapper
+
 class LichessBot:
     def __init__(self, api_token: str, opening_book_path: str = None):
         """
-        Initialize Lichess Bot with auto-challenge capability
+        Initialize Lichess Bot with STRICT rate limiting
         """
         self.api_token = api_token
         self.base_url = "https://lichess.org/api"
         self.headers = {"Authorization": f"Bearer {api_token}"}
         self.opening_book_path = opening_book_path
+        
+        # STRICT rate limiter - ONLY ONE REQUEST AT A TIME
+        self.rate_limiter = StrictRateLimiter()
         
         # Simple game state tracking
         self.in_game = False
@@ -38,7 +102,7 @@ class LichessBot:
         self.game_threads = {}
         self.is_challenging = False
         self.last_challenge_time = 0
-        self.challenge_cooldown = 30
+        self.challenge_cooldown = 180  # 3 minutes between challenge attempts
         self.running = True
         self.challenge_declined = False
         
@@ -46,7 +110,7 @@ class LichessBot:
         self.available_bots = []
         self.tried_bots = set()
         self.last_bot_refresh = 0
-        self.bot_refresh_interval = 3600
+        self.bot_refresh_interval = 10800  # 3 hours
         
         # Bot info
         self.bot_info = self.get_account_info()
@@ -56,9 +120,10 @@ class LichessBot:
         self.refresh_bot_list()
         
         # Start auto-challenger thread
-        self.auto_challenge_thread = threading.Thread(target=self.auto_challenge_loop, daemon=True)
-        self.auto_challenge_thread.start()
+        # self.auto_challenge_thread = threading.Thread(target=self.auto_challenge_loop, daemon=True)
+        # self.auto_challenge_thread.start()
         
+    @strict_rate_limited
     def get_account_info(self) -> Dict[str, Any]:
         """Get bot account information"""
         url = f"{self.base_url}/account"
@@ -121,6 +186,7 @@ class LichessBot:
         else:
             return 'classical'
     
+    @strict_rate_limited
     def refresh_bot_list(self):
         """Fetch current list of online bots using /api/bot/online"""
         try:
@@ -203,7 +269,7 @@ class LichessBot:
     
     def auto_challenge_loop(self):
         """Continuously challenge bots when idle"""
-        logger.info("🎯 Auto-challenger started!")
+        logger.info("🎯 Auto-challenger started with STRICT rate limiting!")
         
         while self.running:
             try:
@@ -214,11 +280,11 @@ class LichessBot:
                 # Only challenge if NOT in game
                 if self.in_game:
                     logger.debug("🎮 Currently in game, waiting...")
-                    time.sleep(10)
+                    time.sleep(15)
                     continue
                 
                 if self.is_challenging:
-                    time.sleep(2)
+                    time.sleep(5)
                     continue
                 
                 # If challenge was declined, try immediately
@@ -229,7 +295,7 @@ class LichessBot:
                         self.challenge_random_bot()
                     continue
                 
-                # Normal cooldown logic
+                # Normal cooldown logic - LONGER WAITS
                 time_since_last = time.time() - self.last_challenge_time
                 if time_since_last < self.challenge_cooldown:
                     remaining = int(self.challenge_cooldown - time_since_last)
@@ -258,16 +324,16 @@ class LichessBot:
                     else:
                         logger.info("❌ No suitable bots found, refreshing list...")
                         self.refresh_bot_list()
-                        time.sleep(30)
+                        time.sleep(60)
                 else:
-                    time.sleep(5)
+                    time.sleep(10)
                 
             except Exception as e:
                 logger.error(f"❌ Auto-challenge error: {e}")
-                time.sleep(10)
+                time.sleep(30)
     
     def challenge_random_bot(self):
-        """Challenge a random bot from the available list"""
+        """Challenge a random bot from the available list - ONLY ONE ATTEMPT"""
         if self.is_challenging or not self.running or not self.available_bots or self.in_game:
             if self.in_game:
                 logger.debug("Cannot challenge - currently in game")
@@ -298,7 +364,7 @@ class LichessBot:
             max_rating = max(1900, int(my_rating * 1.1))
             min_rating = int(my_rating * 0.8)
             
-            logger.info(f"📊 My {category} rating: {my_rating}, Max opponent rating: {max_rating}, Min opponent rating: {min_rating}")
+            logger.info(f"📊 My {category} rating: {my_rating}, Max opponent rating: {max_rating}")
             
             # Get bots we haven't tried yet
             untried_bots = [bot for bot in self.available_bots if bot['username'] not in self.tried_bots]
@@ -323,7 +389,6 @@ class LichessBot:
                 
                 if not filtered_bots:
                     logger.warning(f"❌ No suitable bots found - REFRESHING ACCOUNT INFO")
-                    # 🔥 KEY ADDITION: Refresh account info when no suitable bots
                     self.refresh_account_info()
                     return
             
@@ -332,36 +397,33 @@ class LichessBot:
             preferred_bots = [bot for bot in sorted_bots if min_rating <= bot.get('rating', 1500) <= max_rating]
             suitable_bots = preferred_bots if preferred_bots else sorted_bots
             
-            # Try up to all suitable bots with the pre-selected time control
-            random.shuffle(suitable_bots)
-            
-            for i, bot in enumerate(suitable_bots):
-                if not self.running or self.in_game:
-                    logger.info("Game started while challenging, stopping")
-                    break
-                    
+            # ONLY TRY ONE BOT to minimize API calls
+            if suitable_bots:
+                bot = random.choice(suitable_bots)
                 self.tried_bots.add(bot['username'])
                 
                 rating = bot.get('rating', 'N/A')
                 rating_percent = (rating / my_rating * 100) if my_rating > 0 else 100
-                logger.info(f"🔍 Trying {bot['username']} (rating: {rating}, {rating_percent:.0f}% of my {category}) ({i+1}/{len(suitable_bots)})")
+                logger.info(f"🔍 Trying {bot['username']} (rating: {rating}, {rating_percent:.0f}% of my {category})")
                 
                 # Challenge with the pre-selected time control
                 if self.try_challenge_bot_with_time_control(bot, selected_time_control):
                     logger.info(f"✅ Successfully challenged {bot['username']} (rating: {rating})")
                     return
-                
-                time.sleep(1)
+                else:
+                    logger.warning("❌ Challenge attempt failed")
             
-            # 🔥 KEY ADDITION: If all challenges failed, refresh account info
-            logger.warning("❌ All challenge attempts failed - REFRESHING ACCOUNT INFO")
+            # If challenge failed, wait longer before trying again
+            logger.warning("❌ Challenge failed - waiting before refresh")
+            time.sleep(60)  # Wait 1 minute before refresh
             self.refresh_account_info()
-            self.tried_bots.clear()  # Reset tried bots after refreshing account
+            self.tried_bots.clear()
                         
         finally:
             self.is_challenging = False
             self.last_challenge_time = time.time()
 
+    @strict_rate_limited
     def try_challenge_bot_with_time_control(self, bot: Dict, time_control: Dict) -> bool:
         """Try to challenge a specific bot with specific time control"""
         try:
@@ -369,8 +431,6 @@ class LichessBot:
             
             if bot_name.lower() == self.bot_info.get('username', '').lower():
                 return False
-            
-
             
             url = f"{self.base_url}/challenge/{bot_name}"
             data = {
@@ -382,20 +442,21 @@ class LichessBot:
             }
             
             response = requests.post(url, headers=self.headers, data=data)
-
-            time.sleep(120)
-            print(response)
             
             if response.status_code == 200:
                 rating = bot.get('rating', 'N/A')
                 category = self.get_time_control_category(time_control["time"], time_control["increment"])
                 logger.info(f"✅ Challenge sent to {bot_name} ({rating}) - {time_control['time']}+{time_control['increment']} ({category})")
                 return True
+            elif response.status_code == 429:
+                logger.error(f"🚫 Rate limited challenging {bot_name} - this should not happen with strict limiting!")
+                return False
             else:
+                logger.debug(f"Challenge failed: {response.status_code}")
                 return False
                 
         except Exception as e:
-            print(e)
+            logger.error(f"Exception challenging {bot.get('username', 'unknown')}: {e}")
             return False
     
     def stream_events(self):
@@ -419,7 +480,7 @@ class LichessBot:
             except requests.exceptions.RequestException:
                 if self.running:
                     logger.warning("🔄 Reconnecting...")
-                    time.sleep(5)
+                    time.sleep(10)
                 continue
             except KeyboardInterrupt:
                 logger.info("\n👋 Bot stopped by user")
@@ -428,7 +489,7 @@ class LichessBot:
             except Exception as e:
                 if self.running:
                     logger.error(f"Stream error: {e}")
-                    time.sleep(5)
+                    time.sleep(10)
                 continue
     
     def handle_event(self, event: Dict[str, Any]):
@@ -455,7 +516,7 @@ class LichessBot:
             # Log game result and ELO change
             self.log_game_result(game_id)
             
-            # 🔥 KEY ADDITION: Refresh account info after game to get new rating
+            # Refresh account info after game to get new rating
             self.refresh_account_info()
             
             # Set in_game = False
@@ -464,7 +525,7 @@ class LichessBot:
             
             self.cleanup_game(game_id)
             self.tried_bots.clear()
-            self.last_challenge_time = time.time() - self.challenge_cooldown + 5
+            self.last_challenge_time = time.time() - self.challenge_cooldown + 30  # Wait 30s before next challenge
             
         elif event_type == 'challenge':
             challenge = event['challenge']
@@ -500,10 +561,11 @@ class LichessBot:
                 if not self.in_game:
                     self.challenge_declined = True
     
+    @strict_rate_limited
     def log_game_result(self, game_id: str):
         """Log game result and ELO change"""
         try:
-            time.sleep(2)  # Wait for Lichess to process
+            time.sleep(5)  # Wait longer for Lichess to process
             
             url = f"{self.base_url}/game/export/{game_id}"
             headers = {
@@ -580,15 +642,19 @@ class LichessBot:
             self.decline_challenge(challenge_id)
             logger.info(f"❌ Declined non-standard challenge from {challenger}")
     
+    @strict_rate_limited
     def accept_challenge(self, challenge_id: str):
         """Accept a challenge"""
         url = f"{self.base_url}/challenge/{challenge_id}/accept"
-        requests.post(url, headers=self.headers)
+        response = requests.post(url, headers=self.headers)
+        return response
     
+    @strict_rate_limited
     def decline_challenge(self, challenge_id: str):
         """Decline a challenge"""
         url = f"{self.base_url}/challenge/{challenge_id}/decline"
-        requests.post(url, headers=self.headers)
+        response = requests.post(url, headers=self.headers)
+        return response
     
     def start_game_thread(self, game_id: str):
         """Start a new thread to handle a game"""
@@ -748,16 +814,20 @@ class LichessBot:
         elif text.lower() in ['gg', 'good game']:
             self.send_chat(game_id, "Good game!")
     
+    @strict_rate_limited
     def send_move(self, game_id: str, move_uci: str):
         """Send a move to Lichess"""
         url = f"{self.base_url}/bot/game/{game_id}/move/{move_uci}"
-        requests.post(url, headers=self.headers)
+        response = requests.post(url, headers=self.headers)
+        return response
     
+    @strict_rate_limited
     def send_chat(self, game_id: str, message: str, room: str = 'player'):
         """Send a chat message"""
         url = f"{self.base_url}/bot/game/{game_id}/chat"
         data = {'room': room, 'text': message}
-        requests.post(url, headers=self.headers, data=data)
+        response = requests.post(url, headers=self.headers, data=data)
+        return response
     
     def cleanup_game(self, game_id: str):
         """Clean up resources for a finished game"""
@@ -776,7 +846,7 @@ class LichessBot:
         """Start the bot"""
         logger.info("🚀 Lichess bot started!")
         logger.info(f"👤 Account: {self.bot_info.get('username')}")
-        logger.info("🎯 Simple mode: in_game flag controls challenging")
+        logger.info("🎯 STRICT mode: Only ONE request at a time, 60s wait on 429")
         
         try:
             self.stream_events()
@@ -797,7 +867,7 @@ class LichessBot:
 
 def main():
     """Main function to run the bot"""
-    API_TOKEN = "..."
+    API_TOKEN = "lip_e9u8kkPfxMZbq1K7IETF"
     OPENING_BOOK_PATH = "resources/komodo.bin"
     
     # Test token

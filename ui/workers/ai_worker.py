@@ -177,6 +177,23 @@ class MultiprocessAIWorker(QThread):
             self.finished.emit("")
         finally:
             self.cleanup()
+    
+    def cancel(self):
+        """Cancel the AI computation."""
+        self._cancelled = True
+        if self.cancel_event:
+            self.cancel_event.set()
+    
+    def cleanup(self):
+        """Clean up process resources."""
+        try:
+            if self.ai_process and self.ai_process.is_alive():
+                self.ai_process.terminate()
+                self.ai_process.join(timeout=2)
+                if self.ai_process.is_alive():
+                    self.ai_process.kill()
+        except Exception as e:
+            print(f"Error cleaning up AI process: {e}")
 
 
 class ResponsiveAIManager:
@@ -248,6 +265,8 @@ class ResponsiveAIManager:
     def _update_progress(self):
         """Internal progress update (for smooth progress bars if needed)."""
         pass
+    
+    
 
 # Usage example for your UI:
 """

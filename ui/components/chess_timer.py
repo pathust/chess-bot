@@ -175,6 +175,32 @@ class ChessTimer(QWidget):
         else:
             self.stop_timer()
             self.hide()
+        
+    
+    def add_increment(self, player, increment_ms):
+        """
+        Add time increment to a specific player's clock.
+        
+        Args:
+            player (str): 'white' or 'black'
+            increment_ms (int): Amount of time to add in milliseconds
+        """
+        if not self.is_time_mode:
+            return
+            
+        try:
+            if player == 'white':
+                self.white_time_ms += increment_ms
+                print(f"Added {increment_ms}ms increment to White player (now {self.white_time_ms}ms)")
+            elif player == 'black':
+                self.black_time_ms += increment_ms
+                print(f"Added {increment_ms}ms increment to Black player (now {self.black_time_ms}ms)")
+            
+            # Update the display immediately
+            self.update_display()
+            
+        except Exception as e:
+            print(f"Error adding increment: {str(e)}")
             
     def start_timer(self, player):
         """Start the timer for the specified player ('white' or 'black')."""
@@ -204,11 +230,24 @@ class ChessTimer(QWidget):
         if self.is_time_mode and not self.is_paused and self.active_player:
             self.update_timer.start()
             
-    def switch_player(self, new_player):
-        """Switch the active timer to the new player."""
+    def switch_player(self, new_player, apply_increment=True, increment_ms=None):
+        """
+        Switch the active timer to the new player and optionally apply increment to previous player.
+        
+        Args:
+            new_player (str): 'white' or 'black'
+            apply_increment (bool): Whether to apply increment to the player who just finished their move
+            increment_ms (int, optional): Increment amount in milliseconds
+        """
         if not self.is_time_mode:
             return
-            
+        
+        # Apply increment to the player who just moved (if enabled)
+        if apply_increment and increment_ms and self.active_player:
+            previous_player = self.active_player
+            self.add_increment(previous_player, increment_ms)
+        
+        # Switch to new player
         self.active_player = new_player
         self.update_active_player_display()
         

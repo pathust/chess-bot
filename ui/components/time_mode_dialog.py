@@ -456,7 +456,7 @@ class TimeModeDialog(QDialog):
     
     def accept(self):
         """Accept the dialog with validation and user feedback."""
-        is_time_mode, white_time, black_time = self.get_time_settings()
+        is_time_mode, white_time, black_time, white_inc, black_inc = self.get_time_settings()
         
         # Validate time settings with clear feedback
         if is_time_mode and white_time <= 0:

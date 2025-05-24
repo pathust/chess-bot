@@ -90,7 +90,7 @@ class ChessBoard(QMainWindow):
         
         self.ai_game_running = False
         self.move_delay = 800
-        self.ai_depth = 3
+        self.ai_depth = 20
         self.ai_worker = None
         self.ai_computation_active = False
 
@@ -1024,6 +1024,8 @@ class ChessBoard(QMainWindow):
                         else:
                             self.ai_bot2.make_move(move.uci())
                         
+                        self.apply_time_increment(self.turn)
+                        
                         # Add move to history
                         from_uci = chess.square_name(move.from_square)
                         to_uci = chess.square_name(move.to_square)
@@ -1326,6 +1328,8 @@ class ChessBoard(QMainWindow):
                         if self.mode == "human_ai":
                             self.ai_bot.make_move(move.uci())
                         
+                        self.apply_time_increment('human')
+                        
                         # Add to move history
                         from_uci = chess.square_name(from_square)
                         to_uci = chess.square_name(square)
@@ -1537,6 +1541,8 @@ class ChessBoard(QMainWindow):
                         # Update bot's position to keep it in sync
                         if self.mode == "human_ai":
                             self.ai_bot.make_move(move.uci())
+                            
+                        self.apply_time_increment('ai')
                         
                         # Add to move history
                         from_uci = chess.square_name(from_square)
@@ -1634,6 +1640,47 @@ class ChessBoard(QMainWindow):
     def close_game(self):
         """Close the game window"""
         self.close()
+    
+    def apply_time_increment(self, player_who_moved):
+        """
+        Apply time increment after a player makes a move.
+        
+        Args:
+            player_who_moved (str): The player who just made a move ('human', 'ai', 'ai1', 'ai2')
+        """
+        if not self.is_time_mode:
+            return
+            
+        try:
+            # Determine which timer to increment based on game mode and player
+            if self.mode == "human_ai":
+                if player_who_moved == 'human':
+                    # Human (White) gets white increment
+                    increment = getattr(self, 'white_increment_ms', 3000)
+                    self.chess_timer.white_time_ms += increment
+                    print(f"Added {increment}ms increment to human player")
+                elif player_who_moved == 'ai':
+                    # AI (Black) gets black increment  
+                    increment = getattr(self, 'black_increment_ms', 3000)
+                    self.chess_timer.black_time_ms += increment
+                    print(f"Added {increment}ms increment to AI player")
+            else:  # AI vs AI mode
+                if player_who_moved == 'ai1':
+                    # AI1 (White) gets white increment
+                    increment = getattr(self, 'white_increment_ms', 3000)
+                    self.chess_timer.white_time_ms += increment
+                    print(f"Added {increment}ms increment to AI1 player")
+                elif player_who_moved == 'ai2':
+                    # AI2 (Black) gets black increment
+                    increment = getattr(self, 'black_increment_ms', 3000)
+                    self.chess_timer.black_time_ms += increment
+                    print(f"Added {increment}ms increment to AI2 player")
+                    
+            # Update the timer display to show the new times
+            self.chess_timer.update_display()
+            
+        except Exception as e:
+            print(f"Error applying time increment: {str(e)}")
     
     def resizeEvent(self, event):
         """Handle window resize events to ensure proper layout"""

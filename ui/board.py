@@ -301,18 +301,23 @@ class ChessBoard(QMainWindow):
         result = dialog.exec_()
         
         if result == QDialog.Accepted:
-            # Get settings directly instead of using signal
-            is_time_mode, white_time_ms, black_time_ms = dialog.get_time_settings()
-            self.setup_time_mode(is_time_mode, white_time_ms, black_time_ms)
+            # Get settings directly instead of using signal - NOW WITH INCREMENT
+            is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms = dialog.get_time_settings()
+            self.setup_time_mode(is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms)
             return QDialog.Accepted
         else:
             return QDialog.Rejected
     
-    def setup_time_mode(self, enabled, white_time_ms, black_time_ms):
-        """Setup time mode with specified settings."""
+    def setup_time_mode(self, enabled, white_time_ms, black_time_ms, white_inc_ms=3000, black_inc_ms=3000):
+        """Setup time mode with specified settings including increments."""
         self.is_time_mode = enabled
         self.white_time_ms = white_time_ms
         self.black_time_ms = black_time_ms
+        
+        # Store increment values for smart time management
+        from utils.config import Config
+        self.white_increment_ms = white_inc_ms if white_inc_ms is not None else Config.DEFAULT_WHITE_INCREMENT_MS
+        self.black_increment_ms = black_inc_ms if black_inc_ms is not None else Config.DEFAULT_BLACK_INCREMENT_MS
         
         if enabled:
             # Set player names based on game mode
@@ -327,6 +332,7 @@ class ChessBoard(QMainWindow):
         if enabled and not self.board.is_game_over():
             current_player = 'white' if self.board.turn == chess.WHITE else 'black'
             self.chess_timer.start_timer(current_player)
+
     
     def on_time_expired(self, player):
         """Handle when a player's time expires."""
@@ -399,7 +405,7 @@ class ChessBoard(QMainWindow):
                 timer_was_active = self.chess_timer.update_timer.isActive()
                 self.chess_timer.pause_timer()
             
-            # Prepare timer settings if in time mode
+            # Prepare timer settings if in time mode - NOW WITH INCREMENTS
             timer_settings = None
             if self.is_time_mode:
                 white_time_ms, black_time_ms = self.chess_timer.get_remaining_times()
@@ -409,7 +415,10 @@ class ChessBoard(QMainWindow):
                     'initial_black_time_ms': self.black_time_ms,
                     'white_time_ms': white_time_ms,
                     'black_time_ms': black_time_ms,
-                    'active_player': self.chess_timer.active_player
+                    'active_player': self.chess_timer.active_player,
+                    # Save increment values
+                    'white_increment_ms': getattr(self, 'white_increment_ms', 3000),
+                    'black_increment_ms': getattr(self, 'black_increment_ms', 3000)
                 }
             
             # Call the SavedGameManager to save the game
@@ -464,7 +473,7 @@ class ChessBoard(QMainWindow):
             traceback.print_exc()
         
     def load_game_state(self, game_data):
-        """Load a saved game state with timer support"""
+        """Load a saved game state with timer support including increments"""
         try:
             # Setup the board with the saved FEN position
             self.board = chess.Board(game_data['fen'])
@@ -484,7 +493,7 @@ class ChessBoard(QMainWindow):
             self.last_move_from = game_data.get('last_move_from')
             self.last_move_to = game_data.get('last_move_to')
             
-            # Load timer settings if available
+            # Load timer settings if available - NOW WITH INCREMENTS
             timer_settings = game_data.get('timer_settings')
             if timer_settings:
                 self.is_time_mode = timer_settings.get('enabled', False)
@@ -493,6 +502,10 @@ class ChessBoard(QMainWindow):
                     black_time_ms = timer_settings.get('black_time_ms', 0)
                     self.white_time_ms = timer_settings.get('initial_white_time_ms', white_time_ms)
                     self.black_time_ms = timer_settings.get('initial_black_time_ms', black_time_ms)
+                    
+                    # Load increment values
+                    self.white_increment_ms = timer_settings.get('white_increment_ms', 3000)
+                    self.black_increment_ms = timer_settings.get('black_increment_ms', 3000)
                     
                     # Set player names based on game mode
                     if self.mode == "human_ai":
@@ -865,7 +878,7 @@ class ChessBoard(QMainWindow):
             callback()
     
     def ai_vs_ai_step(self):
-        """Execute a single step in the AI vs AI game - COMPLETELY NON-BLOCKING."""
+        """Execute a single step in the AI vs AI game with smart time management."""
         if self.ai_game_running and not self.board.is_game_over() and not self.ai_computation_active:
             # Set flag to prevent overlapping computations
             self.ai_computation_active = True
@@ -882,6 +895,22 @@ class ChessBoard(QMainWindow):
             # Get current board state
             board_fen = self.board.fen()
             
+            # Prepare time management parameters
+            from utils.config import Config
+            
+            if self.is_time_mode:
+                # Get current time remaining for both players
+                white_time_ms, black_time_ms = self.chess_timer.get_remaining_times()
+                # Use stored increment values
+                white_inc_ms = getattr(self, 'white_increment_ms', Config.DEFAULT_WHITE_INCREMENT_MS)
+                black_inc_ms = getattr(self, 'black_increment_ms', Config.DEFAULT_BLACK_INCREMENT_MS)
+                max_time_ms = 30000  # 30 second absolute maximum
+            else:
+                # No time control - use fixed time
+                white_time_ms = black_time_ms = None
+                white_inc_ms = black_inc_ms = None
+                max_time_ms = 8000  # 8 seconds for AI vs AI
+            
             # Define callbacks
             def on_ai_move_ready(move_uci):
                 """Called when AI finds a move."""
@@ -897,13 +926,17 @@ class ChessBoard(QMainWindow):
                 self.ai_computation_active = False
                 self.handle_ai_vs_ai_error(error_msg)
             
-            # Start AI computation - UI stays responsive!
+            # Start AI computation with smart time management
             self.ai_manager.compute_move(
                 board_fen=board_fen,
                 depth=self.ai_depth,
-                time_ms=8000,  # 8 seconds for AI vs AI
+                time_ms=max_time_ms,
                 on_finished=on_ai_move_ready,
-                on_error=on_ai_error
+                on_error=on_ai_error,
+                white_time_ms=white_time_ms,
+                black_time_ms=black_time_ms,
+                white_inc_ms=white_inc_ms,
+                black_inc_ms=black_inc_ms
             )
         
     def handle_ai_vs_ai_error(self, error_message):
@@ -1351,7 +1384,7 @@ class ChessBoard(QMainWindow):
                 self.update_board()
 
     def ai_move(self):
-        """Calculate and execute the AI's move using multiprocessing - COMPLETELY NON-BLOCKING."""
+        """Calculate and execute the AI's move using smart time management."""
         try:
             # Check if game is already over
             if self.board.is_game_over():
@@ -1369,6 +1402,22 @@ class ChessBoard(QMainWindow):
             
             # Get current board state
             board_fen = self.board.fen()
+            
+            # Prepare time management parameters
+            from utils.config import Config
+            
+            if self.is_time_mode:
+                # Get current time remaining for both players
+                white_time_ms, black_time_ms = self.chess_timer.get_remaining_times()
+                # Use stored increment values
+                white_inc_ms = getattr(self, 'white_increment_ms', Config.DEFAULT_WHITE_INCREMENT_MS)
+                black_inc_ms = getattr(self, 'black_increment_ms', Config.DEFAULT_BLACK_INCREMENT_MS)
+                max_time_ms = 30000  # 30 second absolute maximum
+            else:
+                # No time control - use fixed time
+                white_time_ms = black_time_ms = None
+                white_inc_ms = black_inc_ms = None
+                max_time_ms = 10000  # 10 seconds for non-timed games
             
             # Define callbacks that will run on UI thread
             def on_ai_move_ready(move_uci):
@@ -1391,17 +1440,21 @@ class ChessBoard(QMainWindow):
                 if percent > 0 and not self.thinking_indicator.timer.isActive():
                     self.thinking_indicator.start_thinking("AI")
             
-            # Start AI computation in separate process - UI stays responsive!
+            # Start AI computation with smart time management
             self.ai_manager.compute_move(
                 board_fen=board_fen,
                 depth=self.ai_depth,
-                time_ms=10000,  # 10 seconds
+                time_ms=max_time_ms,
                 on_finished=on_ai_move_ready,
                 on_error=on_ai_error,
-                on_progress=on_ai_progress
+                on_progress=on_ai_progress,
+                white_time_ms=white_time_ms,
+                black_time_ms=black_time_ms,
+                white_inc_ms=white_inc_ms,
+                black_inc_ms=black_inc_ms
             )
             
-            print("AI computation started in background - UI remains responsive!")
+            print("AI computation started with smart time management - UI remains responsive!")
             
         except Exception as e:
             self.thinking_indicator.stop_thinking()

@@ -21,6 +21,13 @@ class Config:
     DEFAULT_ANIMATION_DURATION = 300  # ms
     THINKING_DOT_INTERVAL = 300  # ms
     
+    # Time management settings
+    DEFAULT_WHITE_INCREMENT_MS = 3000  # 3 seconds increment per move
+    DEFAULT_BLACK_INCREMENT_MS = 3000  # 3 seconds increment per move
+    MIN_THINKING_TIME_MS = 500         # Minimum time to think (0.5 seconds)
+    MAX_THINKING_TIME_MS = 30000       # Maximum time to think (30 seconds)
+    EMERGENCY_TIME_MS = 10000          # When to enter emergency mode (10 seconds)
+    
     # Board colors
     LIGHT_SQUARE_COLOR = "#c1bfb0"
     DARK_SQUARE_COLOR = "#7a9bbe"
@@ -44,5 +51,3 @@ class Config:
     MODE_HUMAN_AI = "human_ai"
     MODE_AI_AI = "ai_ai"
     
-    # AI thinking time estimation (ms per depth level)
-    AI_THINKING_TIME = 10000

@@ -9,10 +9,10 @@ import time
 import traceback
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 
-def ai_worker_process(board_fen, depth, time_ms, result_queue, cancel_event):
+def ai_worker_process(board_fen, depth, time_ms, result_queue, cancel_event, 
+                     white_time_ms=None, black_time_ms=None, white_inc_ms=None, black_inc_ms=None):
     """
-    AI computation function that runs in a separate process.
-    This completely isolates AI computation from the UI process.
+    AI computation function that runs in a separate process with smart time management.
     """
     try:
         # Import bot only in worker process to avoid conflicts
@@ -26,6 +26,7 @@ def ai_worker_process(board_fen, depth, time_ms, result_queue, cancel_event):
             sys.path.insert(0, project_root)
         
         from bot import ChessBot
+        from utils.config import Config
         
         # Create bot instance in worker process
         worker_bot = ChessBot(
@@ -38,9 +39,21 @@ def ai_worker_process(board_fen, depth, time_ms, result_queue, cancel_event):
             result_queue.put({"status": "cancelled", "move": None})
             return
         
-        # Get best move with timeout
+        # Calculate optimal thinking time if time control parameters provided
+        if all(param is not None for param in [white_time_ms, black_time_ms, white_inc_ms, black_inc_ms]):
+            optimal_time = worker_bot.choose_think_time(
+                white_time_ms, black_time_ms, white_inc_ms, black_inc_ms
+            )
+            # Use the smaller of requested time or optimal time
+            actual_time_ms = min(time_ms, optimal_time)
+            print(f"Smart time management: optimal={optimal_time}ms, using={actual_time_ms}ms")
+        else:
+            actual_time_ms = time_ms
+            print(f"Fixed time management: using={actual_time_ms}ms")
+        
+        # Get best move with calculated time
         start_time = time.time()
-        best_move = worker_bot.get_best_move(depth=depth, time_ms=time_ms)
+        best_move = worker_bot.get_best_move(depth=depth, time_ms=actual_time_ms)
         elapsed_time = time.time() - start_time
         
         # Check for cancellation before returning result
@@ -50,7 +63,8 @@ def ai_worker_process(board_fen, depth, time_ms, result_queue, cancel_event):
             result_queue.put({
                 "status": "success", 
                 "move": best_move,
-                "time_taken": elapsed_time
+                "time_taken": elapsed_time,
+                "time_allocated": actual_time_ms
             })
             
     except Exception as e:
@@ -60,19 +74,23 @@ def ai_worker_process(board_fen, depth, time_ms, result_queue, cancel_event):
 
 class MultiprocessAIWorker(QThread):
     """
-    Thread that manages a separate AI process and communicates results back to UI.
-    UI thread stays completely responsive.
+    Thread that manages a separate AI process with smart time management.
     """
     
     finished = pyqtSignal(str)  # Best move UCI
     error = pyqtSignal(str)     # Error message
     progress = pyqtSignal(int)  # Progress 0-100
     
-    def __init__(self, board_fen, depth, time_ms=10000, parent=None):
+    def __init__(self, board_fen, depth, time_ms=10000, 
+                 white_time_ms=None, black_time_ms=None, white_inc_ms=None, black_inc_ms=None, parent=None):
         super().__init__(parent)
         self.board_fen = board_fen
         self.depth = depth
         self.time_ms = time_ms
+        self.white_time_ms = white_time_ms
+        self.black_time_ms = black_time_ms
+        self.white_inc_ms = white_inc_ms
+        self.black_inc_ms = black_inc_ms
         self.ai_process = None
         self.result_queue = None
         self.cancel_event = None
@@ -87,11 +105,13 @@ class MultiprocessAIWorker(QThread):
             
             self.progress.emit(10)
             
-            # Start AI process
+            # Start AI process with time management parameters
             self.ai_process = mp.Process(
                 target=ai_worker_process,
                 args=(self.board_fen, self.depth, self.time_ms, 
-                      self.result_queue, self.cancel_event)
+                      self.result_queue, self.cancel_event,
+                      self.white_time_ms, self.black_time_ms, 
+                      self.white_inc_ms, self.black_inc_ms)
             )
             self.ai_process.start()
             
@@ -136,7 +156,9 @@ class MultiprocessAIWorker(QThread):
                 
                 if result["status"] == "success":
                     move = result.get("move", "")
-                    print(f"AI found move: {move} (took {result.get('time_taken', 0):.2f}s)")
+                    time_taken = result.get("time_taken", 0)
+                    time_allocated = result.get("time_allocated", self.time_ms)
+                    print(f"AI found move: {move} (took {time_taken:.2f}s of {time_allocated/1000:.1f}s allocated)")
                     self.finished.emit(move or "")
                 elif result["status"] == "error":
                     self.error.emit(result.get("error", "Unknown AI error"))
@@ -155,29 +177,11 @@ class MultiprocessAIWorker(QThread):
             self.finished.emit("")
         finally:
             self.cleanup()
-    
-    def cancel(self):
-        """Cancel the AI computation."""
-        self._cancelled = True
-        if self.cancel_event:
-            self.cancel_event.set()
-    
-    def cleanup(self):
-        """Clean up process resources."""
-        try:
-            if self.ai_process and self.ai_process.is_alive():
-                self.ai_process.terminate()
-                self.ai_process.join(timeout=2)
-                if self.ai_process.is_alive():
-                    self.ai_process.kill()
-        except Exception as e:
-            print(f"Error cleaning up AI process: {e}")
 
 
 class ResponsiveAIManager:
     """
-    High-level manager for AI computation that keeps UI responsive.
-    This is what your UI should use.
+    High-level manager for AI computation with smart time management.
     """
     
     def __init__(self, parent=None):
@@ -187,23 +191,31 @@ class ResponsiveAIManager:
         self.progress_timer.timeout.connect(self._update_progress)
         self._current_progress = 0
         
-    def compute_move(self, board_fen, depth, time_ms, on_finished, on_error=None, on_progress=None):
+    def compute_move(self, board_fen, depth, time_ms, on_finished, on_error=None, on_progress=None,
+                     white_time_ms=None, black_time_ms=None, white_inc_ms=None, black_inc_ms=None):
         """
-        Start AI move computation without blocking UI.
+        Start AI move computation with optional smart time management.
         
         Args:
             board_fen (str): Current board position
             depth (int): Search depth
-            time_ms (int): Time limit in milliseconds
-            on_finished (callable): Callback when move is found: on_finished(move_uci)
-            on_error (callable): Callback for errors: on_error(error_message)
-            on_progress (callable): Callback for progress: on_progress(percent)
+            time_ms (int): Maximum time limit in milliseconds
+            on_finished (callable): Callback when move is found
+            on_error (callable): Callback for errors
+            on_progress (callable): Callback for progress
+            white_time_ms (int, optional): White's remaining time
+            black_time_ms (int, optional): Black's remaining time  
+            white_inc_ms (int, optional): White's time increment
+            black_inc_ms (int, optional): Black's time increment
         """
         # Cancel any existing computation
         self.cancel_computation()
         
-        # Create new worker
-        self.current_worker = MultiprocessAIWorker(board_fen, depth, time_ms)
+        # Create new worker with time management parameters
+        self.current_worker = MultiprocessAIWorker(
+            board_fen, depth, time_ms,
+            white_time_ms, black_time_ms, white_inc_ms, black_inc_ms
+        )
         
         # Connect callbacks
         self.current_worker.finished.connect(on_finished)
@@ -215,7 +227,10 @@ class ResponsiveAIManager:
         # Start computation
         self.current_worker.start()
         
-        print(f"Started AI computation: depth={depth}, time={time_ms}ms")
+        time_info = f"depth={depth}, max_time={time_ms}ms"
+        if white_time_ms is not None:
+            time_info += f", time_control=({white_time_ms}ms, {black_time_ms}ms, +{white_inc_ms}ms)"
+        print(f"Started AI computation: {time_info}")
         
     def cancel_computation(self):
         """Cancel any ongoing AI computation."""
@@ -232,8 +247,7 @@ class ResponsiveAIManager:
         
     def _update_progress(self):
         """Internal progress update (for smooth progress bars if needed)."""
-        pass  # Can be used for smooth progress animations
-
+        pass
 
 # Usage example for your UI:
 """

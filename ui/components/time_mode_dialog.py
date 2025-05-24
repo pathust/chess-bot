@@ -290,6 +290,54 @@ class TimeModeDialog(QDialog):
         
         layout.addWidget(self.time_settings_frame)
         
+        increment_label = QLabel("⏲️ Time Increment (per move):")
+        increment_label.setStyleSheet("""
+            font-size: 12pt; 
+            color: #000000; 
+            margin-top: 8px; 
+            margin-bottom: 4px;
+            font-weight: bold;
+        """)
+        time_settings_layout.addWidget(increment_label)
+        
+        # Increment inputs with small controls
+        increment_container = QWidget()
+        increment_layout = QHBoxLayout(increment_container)
+        increment_layout.setSpacing(8)
+        
+        # Increment seconds
+        inc_label = QLabel("Increment:")
+        inc_label.setStyleSheet("""
+            font-size: 10pt; 
+            color: #000000;
+            font-weight: bold;
+        """)
+        increment_layout.addWidget(inc_label)
+        
+        self.increment_spinbox = QSpinBox()
+        self.increment_spinbox.setRange(0, 30)
+        self.increment_spinbox.setValue(3)  # Default 3 seconds
+        self.increment_spinbox.setSuffix(" sec")
+        self.increment_spinbox.setStyleSheet("""
+            font-size: 10pt;
+            padding: 4px;
+            min-width: 65px;
+            min-height: 20px;
+        """)
+        increment_layout.addWidget(self.increment_spinbox)
+        
+        # Add explanation
+        inc_explain = QLabel("(added after each move)")
+        inc_explain.setStyleSheet("""
+            font-size: 9pt; 
+            color: #666666;
+            font-style: italic;
+        """)
+        increment_layout.addWidget(inc_explain)
+        
+        increment_layout.addStretch()
+        time_settings_layout.addWidget(increment_container)
+        
         # Initially disable time settings
         self.time_settings_frame.setEnabled(False)
         
@@ -391,16 +439,20 @@ class TimeModeDialog(QDialog):
         self.ok_button.setText(f"✅ Start Timed Game ({time_str})")
     
     def get_time_settings(self):
-        """Get the selected time settings."""
+        """Get the selected time settings including increment."""
         is_time_mode = self.time_mode_radio.isChecked()
         
         if is_time_mode:
             minutes = self.minutes_spinbox.value()
             seconds = self.seconds_spinbox.value()
+            increment_seconds = self.increment_spinbox.value()
+            
             time_ms = (minutes * 60 + seconds) * 1000
-            return is_time_mode, time_ms, time_ms
+            increment_ms = increment_seconds * 1000
+            
+            return is_time_mode, time_ms, time_ms, increment_ms, increment_ms
         else:
-            return False, 0, 0
+            return False, 0, 0, 0, 0
     
     def accept(self):
         """Accept the dialog with validation and user feedback."""

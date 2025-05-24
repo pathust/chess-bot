@@ -56,13 +56,13 @@ class ChessApp(QApplication):
         time_dialog = TimeModeDialog()
         
         if time_dialog.exec_() == QDialog.Accepted:
-            is_time_mode, white_time_ms, black_time_ms = time_dialog.get_time_settings()
+            is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms = time_dialog.get_time_settings()
             
             # Create chess window with the selected mode
             self.chess_window = ChessBoard(mode, self)
             
-            # Setup time mode after window creation
-            self.chess_window.setup_time_mode(is_time_mode, white_time_ms, black_time_ms)
+            # Setup time mode with increments after window creation
+            self.chess_window.setup_time_mode(is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms)
             
             # Start timer for human vs AI mode
             if mode == "human_ai" and is_time_mode:
@@ -92,7 +92,7 @@ class ChessApp(QApplication):
             pass
     
     def start_loaded_game(self, game_data):
-        """Start a game with the loaded game data"""
+        """Start a game with the loaded game data including increments."""
         try:
             mode = game_data.get('mode', 'human_ai')
             
@@ -107,25 +107,30 @@ class ChessApp(QApplication):
             is_time_mode = False
             white_time_ms = 0
             black_time_ms = 0
+            white_inc_ms = 3000  # Default increment
+            black_inc_ms = 3000  # Default increment
             
             if has_timer_data:
                 timer_settings = game_data['timer_settings']
                 is_time_mode = timer_settings.get('enabled', False)
                 white_time_ms = timer_settings.get('white_time_ms', 0)
                 black_time_ms = timer_settings.get('black_time_ms', 0)
+                # Load saved increment values or use defaults
+                white_inc_ms = timer_settings.get('white_increment_ms', 3000)
+                black_inc_ms = timer_settings.get('black_increment_ms', 3000)
             else:
                 # Ask user if they want to enable time mode for this loaded game
                 time_dialog = TimeModeDialog()
                 time_dialog.setWindowTitle("Time Control for Loaded Game")
                 
                 if time_dialog.exec_() == QDialog.Accepted:
-                    is_time_mode, white_time_ms, black_time_ms = time_dialog.get_time_settings()
+                    is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms = time_dialog.get_time_settings()
             
             # Create a new chess window with the loaded game data
             self.chess_window = ChessBoard(mode, self, game_data)
             
-            # Setup time mode
-            self.chess_window.setup_time_mode(is_time_mode, white_time_ms, black_time_ms)
+            # Setup time mode with increments
+            self.chess_window.setup_time_mode(is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms)
             
             # If time mode is enabled, start the timer for the current player
             if is_time_mode:

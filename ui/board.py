@@ -729,8 +729,10 @@ class ChessBoard(QMainWindow):
     
     # Updated reset_game method to prevent double time dialog
 
+    # Replace the existing reset_game method in ui/board.py:
+
     def reset_game(self):
-        """Reset the game to initial state - MULTIPROCESS VERSION."""
+        """Reset the game to initial state - with proper time dialog handling."""
         # Stop and cleanup AI processes first
         self.stop_thinking()
         
@@ -779,17 +781,49 @@ class ChessBoard(QMainWindow):
             self.popup.close()
             self.popup = None
         
-        # FIXED: Show time dialog from app.py level, not here
-        if self.parent_app:
-            # Let app.py handle the time dialog
-            QTimer.singleShot(200, lambda: self.parent_app.start_new_game_with_time_selection(self.mode))
-            self.close()  # Close current window
-        else:
-            # Fallback for standalone usage
-            if self.mode == "human_ai":
-                self.thinking_indicator.show_status("Your turn")
-            else:
-                self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+        # Show time dialog and restart with new settings
+        from ui.components.time_mode_dialog import TimeModeDialog
+        
+        def show_time_dialog_and_restart():
+            try:
+                time_dialog = TimeModeDialog(self)
+                if time_dialog.exec_() == QDialog.Accepted:
+                    # Get new time settings
+                    is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms = time_dialog.get_time_settings()
+                    
+                    # Apply new time settings
+                    self.setup_time_mode(is_time_mode, white_time_ms, black_time_ms, white_inc_ms, black_inc_ms)
+                    
+                    # Start timer for current player if time mode enabled
+                    if is_time_mode:
+                        if self.mode == "human_ai":
+                            self.switch_timer_to_player('human')
+                        else:
+                            # For AI vs AI, timer will start when game starts
+                            pass
+                    
+                    # Set appropriate status
+                    if self.mode == "human_ai":
+                        self.thinking_indicator.show_status("Your turn")
+                    else:
+                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+                else:
+                    # User canceled - just show status without time mode
+                    if self.mode == "human_ai":
+                        self.thinking_indicator.show_status("Your turn")
+                    else:
+                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+                        
+            except Exception as e:
+                print(f"Error in time dialog: {str(e)}")
+                # Fallback to no time mode
+                if self.mode == "human_ai":
+                    self.thinking_indicator.show_status("Your turn")
+                else:
+                    self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+        
+        # Show time dialog after UI updates
+        QTimer.singleShot(200, show_time_dialog_and_restart)
     
     def animate_piece_movement(self, from_pos, to_pos, piece_symbol, piece_color, capture=False, callback=None):
         """Animate a piece moving from one square to another"""

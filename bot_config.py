@@ -58,7 +58,7 @@ def create_config_file():
 # Replace the values below with your actual settings
 
 # Your Lichess API token (get from https://lichess.org/account/oauth/token)
-API_TOKEN = "lip_n2QO0i6D9IlLSwPaVBxL"
+API_TOKEN = "..."
 
 # Path to opening book file (optional)
 OPENING_BOOK_PATH = "resources/komodo.bin"

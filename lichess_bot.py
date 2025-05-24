@@ -31,20 +31,22 @@ class LichessBot:
         self.headers = {"Authorization": f"Bearer {api_token}"}
         self.opening_book_path = opening_book_path
         
-        # Active games tracking
+        # Simple game state tracking
+        self.in_game = False
+        self.current_game_id = None
         self.active_games = {}
         self.game_threads = {}
         self.is_challenging = False
         self.last_challenge_time = 0
-        self.challenge_cooldown = 30  # seconds between challenges
+        self.challenge_cooldown = 30
         self.running = True
-        self.challenge_declined = False  # Flag to retry immediately
+        self.challenge_declined = False
         
         # Dynamic bot list
         self.available_bots = []
-        self.tried_bots = set()  # Track bots we've tried this round
+        self.tried_bots = set()
         self.last_bot_refresh = 0
-        self.bot_refresh_interval = 3600  # 60 minutes
+        self.bot_refresh_interval = 3600
         
         # Bot info
         self.bot_info = self.get_account_info()
@@ -66,12 +68,64 @@ class LichessBot:
         else:
             raise Exception(f"Failed to get account info: {response.status_code}")
     
+    def refresh_account_info(self):
+        """Refresh account info to get updated ratings"""
+        try:
+            old_ratings = {}
+            if self.bot_info.get('perfs'):
+                for category in ['bullet', 'blitz', 'rapid', 'classical']:
+                    if category in self.bot_info['perfs']:
+                        old_ratings[category] = self.bot_info['perfs'][category].get('rating', 1500)
+            
+            self.bot_info = self.get_account_info()
+            
+            # Log rating changes
+            new_ratings = {}
+            if self.bot_info.get('perfs'):
+                for category in ['bullet', 'blitz', 'rapid', 'classical']:
+                    if category in self.bot_info['perfs']:
+                        new_ratings[category] = self.bot_info['perfs'][category].get('rating', 1500)
+                        if category in old_ratings and old_ratings[category] != new_ratings[category]:
+                            change = new_ratings[category] - old_ratings[category]
+                            logger.info(f"📈 {category.capitalize()} rating updated: {old_ratings[category]} → {new_ratings[category]} ({change:+d})")
+            
+            logger.info(f"🔄 Account info refreshed - ratings updated")
+        except Exception as e:
+            logger.error(f"❌ Error refreshing account info: {e}")
+    
+    def get_my_rating_for_time_control(self, category) -> int:
+        """Get our rating for specific time control"""
+        try:
+            perfs = self.bot_info.get('perfs', {})
+            
+            # Get rating for this category
+            if category in perfs:
+                perf_data = perfs.get(category)
+                return perf_data.get('rating', 1500)
+            # Fallback
+            return 1500
+            
+        except Exception as e:
+            logger.error(f"Error getting rating for time control: {e}")
+            return 1500
+    
+    def get_time_control_category(self, time_limit: int, increment: int = 0) -> str:
+        """Get time control category name"""
+        total_time = time_limit + increment * 40
+        if total_time < 180:
+            return 'bullet'
+        elif total_time < 480:
+            return 'blitz'
+        elif total_time < 1500:
+            return 'rapid'
+        else:
+            return 'classical'
+    
     def refresh_bot_list(self):
         """Fetch current list of online bots using /api/bot/online"""
         try:
             logger.info("🔄 Refreshing bot list...")
             
-            # Get online bots from the correct API
             url = f"{self.base_url}/bot/online"
             response = requests.get(url, headers=self.headers, timeout=15)
             
@@ -91,19 +145,10 @@ class LichessBot:
                         continue
             
             self.available_bots = bots
-            self.tried_bots.clear()  # Reset tried bots when refreshing
+            self.tried_bots.clear()
             self.last_bot_refresh = time.time()
             
             logger.info(f"✅ Found {len(self.available_bots)} suitable bots")
-            
-            # Show some examples
-            if self.available_bots:
-                examples = self.available_bots[:3]
-                for bot in examples:
-                    rating = bot.get('rating', 'N/A')
-                    logger.info(f"   • {bot['username']} ({rating})")
-                if len(self.available_bots) > 3:
-                    logger.info(f"   ... and {len(self.available_bots) - 3} more")
             
         except Exception as e:
             logger.error(f"❌ Error refreshing bot list: {e}")
@@ -111,11 +156,9 @@ class LichessBot:
     
     def format_bot_data(self, bot_data: Dict) -> Dict:
         """Format bot data from API response"""
-        # Get best rating from perfs
         perfs = bot_data.get('perfs', {})
-        rating = 1500  # default
+        rating = 1500
         
-        # Priority order for rating selection
         for perf_type in ['blitz', 'rapid', 'bullet', 'classical']:
             if perf_type in perfs and not perfs[perf_type].get('prov', False):
                 rating = perfs[perf_type].get('rating', 1500)
@@ -125,7 +168,7 @@ class LichessBot:
             'username': bot_data['username'],
             'id': bot_data['id'],
             'rating': rating,
-            'online': True,  # All bots from /api/bot/online are online
+            'online': True,
             'games': sum(perf.get('games', 0) for perf in perfs.values())
         }
     
@@ -133,7 +176,7 @@ class LichessBot:
         """Check if bot is suitable for challenging"""
         username = bot_data.get('username', '')
         
-        # Skip our own bot - IMPORTANT!
+        # Skip our own bot
         my_username = self.bot_info.get('username', '').lower()
         if username.lower() == my_username:
             return False
@@ -152,7 +195,6 @@ class LichessBot:
                 rating = perf.get('rating', 0)
                 games = perf.get('games', 0)
                 
-                # Check if has reasonable rating and experience
                 if 1000 <= rating <= 3000 and games > 10:
                     has_valid_rating = True
                     break
@@ -169,18 +211,17 @@ class LichessBot:
                 if time.time() - self.last_bot_refresh > self.bot_refresh_interval:
                     self.refresh_bot_list()
                 
-                # Check if we should challenge
-                time_since_last = time.time() - self.last_challenge_time
-                
-                if len(self.active_games) > 0:
-                    time.sleep(5)
+                # Only challenge if NOT in game
+                if self.in_game:
+                    logger.debug("🎮 Currently in game, waiting...")
+                    time.sleep(10)
                     continue
                 
                 if self.is_challenging:
                     time.sleep(2)
                     continue
                 
-                # If challenge was declined, try immediately with different bot
+                # If challenge was declined, try immediately
                 if self.challenge_declined:
                     self.challenge_declined = False
                     logger.info("🔄 Challenge declined, trying different bot...")
@@ -188,11 +229,11 @@ class LichessBot:
                         self.challenge_random_bot()
                     continue
                 
-                # Normal cooldown logic with single progress bar
+                # Normal cooldown logic
+                time_since_last = time.time() - self.last_challenge_time
                 if time_since_last < self.challenge_cooldown:
                     remaining = int(self.challenge_cooldown - time_since_last)
                     
-                    # Single progress bar that updates in place
                     with tqdm(total=remaining, 
                              desc="⏳ Waiting to challenge", 
                              unit="s", 
@@ -201,23 +242,25 @@ class LichessBot:
                              bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}s') as pbar:
                         
                         for i in range(remaining):
-                            if not self.running or len(self.active_games) > 0 or self.challenge_declined:
+                            if not self.running or self.in_game or self.challenge_declined:
                                 break
                             time.sleep(1)
                             pbar.update(1)
                     
-                    # Clear the line after progress bar
                     print("\r" + " " * 80 + "\r", end="", flush=True)
                     continue
                 
-                # Try to challenge
-                if self.available_bots:
-                    logger.info("🎯 Looking for opponent...")
-                    self.challenge_random_bot()
+                # Try to challenge if idle
+                if not self.in_game and not self.is_challenging:
+                    if self.available_bots:
+                        logger.info("🎯 Looking for opponent...")
+                        self.challenge_random_bot()
+                    else:
+                        logger.info("❌ No suitable bots found, refreshing list...")
+                        self.refresh_bot_list()
+                        time.sleep(30)
                 else:
-                    logger.info("❌ No suitable bots found, refreshing list...")
-                    self.refresh_bot_list()
-                    time.sleep(30)
+                    time.sleep(5)
                 
             except Exception as e:
                 logger.error(f"❌ Auto-challenge error: {e}")
@@ -225,24 +268,43 @@ class LichessBot:
     
     def challenge_random_bot(self):
         """Challenge a random bot from the available list"""
-        if self.is_challenging or not self.running or not self.available_bots:
+        if self.is_challenging or not self.running or not self.available_bots or self.in_game:
+            if self.in_game:
+                logger.debug("Cannot challenge - currently in game")
             return
             
         self.is_challenging = True
         
         try:
-            # Get our rating to calculate 110% threshold
-            my_rating = self.get_my_rating()
-            max_rating = int(my_rating * 1.1)  # 110% of our rating
+            # Pre-select time control to get appropriate rating
+            time_controls = [
+                {"time": 180, "increment": 2},   # 3+2 (blitz)
+                {"time": 300, "increment": 0},   # 5+0 (blitz)
+                {"time": 300, "increment": 3},   # 5+3 (blitz)
+                {"time": 600, "increment": 0},   # 10+0 (rapid)
+            ]
             
-            logger.info(f"📊 My rating: {my_rating}, Max opponent rating: {max_rating}")
+            selected_time_control = random.choice(time_controls)
+            
+            # Determine category for logging, rating
+            category = self.get_time_control_category(
+                selected_time_control["time"], 
+                selected_time_control["increment"]
+            )
+            
+            # Get our rating for this time control
+            my_rating = self.get_my_rating_for_time_control(category)
+            
+            max_rating = max(1900, int(my_rating * 1.1))
+            min_rating = int(my_rating * 0.8)
+            
+            logger.info(f"📊 My {category} rating: {my_rating}, Max opponent rating: {max_rating}, Min opponent rating: {min_rating}")
             
             # Get bots we haven't tried yet
             untried_bots = [bot for bot in self.available_bots if bot['username'] not in self.tried_bots]
             
-            # If we've tried all bots, reset and try again
             if not untried_bots:
-                logger.info("🔄 Tried all bots, resetting and refreshing list...")
+                logger.info("🔄 Tried all bots, resetting...")
                 self.tried_bots.clear()
                 self.refresh_bot_list()
                 untried_bots = self.available_bots.copy()
@@ -251,98 +313,65 @@ class LichessBot:
                 logger.warning("❌ No bots available")
                 return
             
-            # Filter bots with rating < 110% of our rating
+            # Filter bots with rating < 110% of our rating for this time control
             filtered_bots = [bot for bot in untried_bots if bot.get('rating', 1500) < max_rating]
             
             if not filtered_bots:
                 logger.warning(f"❌ No bots with rating < {max_rating} available")
-                # Reset tried bots and try again with all available bots
                 self.tried_bots.clear()
                 filtered_bots = [bot for bot in self.available_bots if bot.get('rating', 1500) < max_rating]
                 
                 if not filtered_bots:
-                    logger.warning(f"❌ No suitable bots found (rating < {max_rating})")
+                    logger.warning(f"❌ No suitable bots found - REFRESHING ACCOUNT INFO")
+                    # 🔥 KEY ADDITION: Refresh account info when no suitable bots
+                    self.refresh_account_info()
                     return
             
-            # Sort by rating (ascending - weakest first)
+            # Sort by rating and pick suitable ones
             sorted_bots = sorted(filtered_bots, key=lambda x: x['rating'])
-            
-            # Pick from suitable range (prefer closer to our rating)
-            # Take bots with rating between 80% and 110% of our rating
-            min_rating = int(my_rating * 0.8)
-            preferred_bots = [bot for bot in sorted_bots if min_rating <= bot.get('rating', 1500) < max_rating]
-            
-            # If no preferred bots, use all filtered bots
+            preferred_bots = [bot for bot in sorted_bots if min_rating <= bot.get('rating', 1500) <= max_rating]
             suitable_bots = preferred_bots if preferred_bots else sorted_bots
             
-            # Shuffle and try up to 5 bots
+            # Try up to all suitable bots with the pre-selected time control
             random.shuffle(suitable_bots)
             
-            for i, bot in enumerate(suitable_bots[:5]):
-                if not self.running:
+            for i, bot in enumerate(suitable_bots):
+                if not self.running or self.in_game:
+                    logger.info("Game started while challenging, stopping")
                     break
                     
-                # Mark as tried
                 self.tried_bots.add(bot['username'])
                 
                 rating = bot.get('rating', 'N/A')
                 rating_percent = (rating / my_rating * 100) if my_rating > 0 else 100
-                logger.info(f"🔍 Trying {bot['username']} (rating: {rating}, {rating_percent:.0f}% of mine) ({i+1}/5)")
+                logger.info(f"🔍 Trying {bot['username']} (rating: {rating}, {rating_percent:.0f}% of my {category}) ({i+1}/{len(suitable_bots)})")
                 
-                if self.try_challenge_bot(bot):
+                # Challenge with the pre-selected time control
+                if self.try_challenge_bot_with_time_control(bot, selected_time_control):
                     logger.info(f"✅ Successfully challenged {bot['username']} (rating: {rating})")
                     return
                 
-                time.sleep(1)  # Small delay between attempts
+                time.sleep(1)
             
-            logger.warning("❌ All challenge attempts failed")
+            # 🔥 KEY ADDITION: If all challenges failed, refresh account info
+            logger.warning("❌ All challenge attempts failed - REFRESHING ACCOUNT INFO")
+            self.refresh_account_info()
+            self.tried_bots.clear()  # Reset tried bots after refreshing account
                         
         finally:
             self.is_challenging = False
             self.last_challenge_time = time.time()
 
-    def get_my_rating(self):
-        """Get our current rating"""
-        try:
-            # Get rating from bot info perfs
-            perfs = self.bot_info.get('perfs', {})
-            
-            # Priority order for rating selection
-            for perf_type in ['blitz', 'rapid', 'bullet', 'classical']:
-                if perf_type in perfs and not perfs[perf_type].get('prov', False):
-                    rating = perfs[perf_type].get('rating', 1500)
-                    if rating > 0:
-                        return rating
-            
-            # Fallback to default rating
-            return 1500
-            
-        except Exception as e:
-            logger.error(f"Error getting my rating: {e}")
-            return 1500
-
-
-    
-    def try_challenge_bot(self, bot: Dict) -> bool:
-        """Try to challenge a specific bot"""
+    def try_challenge_bot_with_time_control(self, bot: Dict, time_control: Dict) -> bool:
+        """Try to challenge a specific bot with specific time control"""
         try:
             bot_name = bot['username']
             
-            # Skip our own bot (double check)
             if bot_name.lower() == self.bot_info.get('username', '').lower():
                 return False
             
-            # Random time control based on bot's strengths
-            time_controls = [
-                {"time": 180, "increment": 2},   # 3+0
-                {"time": 300, "increment": 2},   # 5+0
-                {"time": 300, "increment": 3},   # 5+3
-                {"time": 600, "increment": 5},   # 10+0
-            ]
+
             
-            time_control = random.choice(time_controls)
-            
-            # Send challenge
             url = f"{self.base_url}/challenge/{bot_name}"
             data = {
                 "rated": "true",
@@ -353,18 +382,20 @@ class LichessBot:
             }
             
             response = requests.post(url, headers=self.headers, data=data)
+
+            time.sleep(120)
+            print(response)
             
             if response.status_code == 200:
                 rating = bot.get('rating', 'N/A')
-                logger.info(f"✅ Challenge sent to {bot_name} ({rating}) - {time_control['time']}+{time_control['increment']}")
+                category = self.get_time_control_category(time_control["time"], time_control["increment"])
+                logger.info(f"✅ Challenge sent to {bot_name} ({rating}) - {time_control['time']}+{time_control['increment']} ({category})")
                 return True
             else:
-                # Log to file only for failed challenges
-                logger.debug(f"Challenge to {bot_name} failed: {response.status_code}")
                 return False
                 
         except Exception as e:
-            logger.debug(f"Exception challenging {bot.get('username', 'unknown')}: {e}")
+            print(e)
             return False
     
     def stream_events(self):
@@ -408,22 +439,44 @@ class LichessBot:
             game_info = event['game']
             game_id = game_info['id']
             logger.info(f"🎮 Game started: {game_id}")
+            
+            # Set in_game = True
+            self.in_game = True
+            self.current_game_id = game_id
+            self.is_challenging = False
+            
             self.start_game_thread(game_id)
             
         elif event_type == 'gameFinish':
             game_info = event['game']
             game_id = game_info['id']
             logger.info(f"🏁 Game finished: {game_id}")
+            
+            # Log game result and ELO change
+            self.log_game_result(game_id)
+            
+            # 🔥 KEY ADDITION: Refresh account info after game to get new rating
+            self.refresh_account_info()
+            
+            # Set in_game = False
+            self.in_game = False
+            self.current_game_id = None
+            
             self.cleanup_game(game_id)
-            # Reset tried bots after game finish to try again
             self.tried_bots.clear()
+            self.last_challenge_time = time.time() - self.challenge_cooldown + 5
             
         elif event_type == 'challenge':
             challenge = event['challenge']
             challenger_name = challenge.get('challenger', {}).get('name', '')
             
-            # Don't accept challenges from ourselves
             if challenger_name.lower() == self.bot_info.get('username', '').lower():
+                return
+            
+            # Only accept if not in game
+            if self.in_game:
+                logger.info(f"🚫 Declining challenge from {challenger_name} - already in game")
+                self.decline_challenge(challenge['id'])
                 return
                 
             self.handle_challenge(challenge)
@@ -433,21 +486,86 @@ class LichessBot:
             challenger = challenge_data.get('challenger', {}).get('name', 'Unknown')
             destUser = challenge_data.get('destUser', {}).get('name', 'Unknown')
             
-            # Only log if we were the challenger
             if challenger.lower() == self.bot_info.get('username', '').lower():
                 logger.info(f"❌ Our challenge declined by {destUser}")
-                # Set flag to try different bot immediately
-                self.challenge_declined = True
+                if not self.in_game:
+                    self.challenge_declined = True
         
         elif event_type == 'challengeCanceled':
             challenge_data = event.get('challenge', {})
             challenger = challenge_data.get('challenger', {}).get('name', 'Unknown')
             
-            # Only log if we were involved
             if challenger.lower() == self.bot_info.get('username', '').lower():
                 logger.info(f"🚫 Our challenge was canceled")
-                # Set flag to try different bot immediately
-                self.challenge_declined = True
+                if not self.in_game:
+                    self.challenge_declined = True
+    
+    def log_game_result(self, game_id: str):
+        """Log game result and ELO change"""
+        try:
+            time.sleep(2)  # Wait for Lichess to process
+            
+            url = f"{self.base_url}/game/export/{game_id}"
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json"
+            }
+            
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                game_data = response.json()
+                players = game_data.get('players', {})
+                my_username = self.bot_info.get('username', '').lower()
+                
+                # Determine my color and get my data
+                white_player = players.get('white', {})
+                black_player = players.get('black', {})
+                
+                if white_player.get('user', {}).get('name', '').lower() == my_username:
+                    my_data = white_player
+                    opponent_data = black_player
+                    my_color = 'white'
+                else:
+                    my_data = black_player
+                    opponent_data = white_player
+                    my_color = 'black'
+                
+                # Get game result
+                winner = game_data.get('winner')
+                status = game_data.get('status')
+                
+                if winner == my_color:
+                    result = "🏆 WON"
+                elif winner is None:
+                    result = "🤝 DRAW"
+                else:
+                    result = "❌ LOST"
+                
+                # Get ELO change
+                elo_change = my_data.get('ratingDiff', 0)
+                opponent_name = opponent_data.get('user', {}).get('name', 'Unknown')
+                opponent_elo = opponent_data.get('rating', 'N/A')
+                
+                # Get time control info
+                clock = game_data.get('clock', {})
+                time_limit = clock.get('initial', 0) // 1000  # Convert to seconds
+                increment = clock.get('increment', 0) // 1000
+                category = self.get_time_control_category(time_limit, increment)
+                
+                # Log the result
+                logger.info(f"📊 GAME RESULT:")
+                logger.info(f"   Result: {result}")
+                logger.info(f"   Opponent: {opponent_name} ({opponent_elo})")
+                logger.info(f"   Time Control: {time_limit}+{increment} ({category})")
+                logger.info(f"   ELO Change: {elo_change:+d}")
+                logger.info(f"   Status: {status}")
+                
+            else:
+                logger.error(f"Failed to get game result: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Error getting game result: {e}")
     
     def handle_challenge(self, challenge: Dict[str, Any]):
         """Handle incoming challenges"""
@@ -537,14 +655,14 @@ class LichessBot:
         
         if white_player.get('name', '').lower() == my_username:
             game_info['my_color'] = 'white'
-            opponent = black_player.get('name', 'Unknown')
+            opponent = black_player
         elif black_player.get('name', '').lower() == my_username:
             game_info['my_color'] = 'black'
-            opponent = white_player.get('name', 'Unknown')
+            opponent = white_player
         else:
             return False
         
-        logger.info(f"♟️  Playing as {game_info['my_color']} vs {opponent}")
+        logger.info(f"♟️  Playing as {game_info['my_color']} vs {opponent.get('name')} (ELO: {opponent.get('rating')})")
         
         # Handle initial state
         initial_state = data.get('state', {})
@@ -595,14 +713,26 @@ class LichessBot:
             # Get move
             def on_move_chosen(move_uci):
                 if move_uci:
+                    try:
+                        chess_bot.make_move(move_uci)
+                    except Exception as e:
+                        logger.error(f"Error making move on internal board: {e}")
+                    
                     self.send_move(game_id, move_uci)
                     logger.info(f"♟️  Played: {move_uci}")
                 else:
                     # Fallback
                     legal_moves = chess_bot.get_legal_moves()
                     if legal_moves:
-                        self.send_move(game_id, legal_moves[0])
-                        logger.info(f"♟️  Played (fallback): {legal_moves[0]}")
+                        fallback_move = legal_moves[0]
+                        
+                        try:
+                            chess_bot.make_move(fallback_move)
+                        except Exception as e:
+                            logger.error(f"Error making fallback move: {e}")
+                        
+                        self.send_move(game_id, fallback_move)
+                        logger.info(f"♟️  Played (fallback): {fallback_move}")
             
             chess_bot.on_move_chosen = on_move_chosen
             chess_bot.think_timed(think_time_ms)
@@ -639,11 +769,14 @@ class LichessBot:
         
         if game_id in self.game_threads:
             del self.game_threads[game_id]
+        
+        logger.info(f"🧹 Game {game_id} cleaned up")
     
     def run(self):
         """Start the bot"""
         logger.info("🚀 Lichess bot started!")
         logger.info(f"👤 Account: {self.bot_info.get('username')}")
+        logger.info("🎯 Simple mode: in_game flag controls challenging")
         
         try:
             self.stream_events()

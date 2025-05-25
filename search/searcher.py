@@ -31,8 +31,6 @@ class Searcher:
         self.search_total_timer = time.time()
         self.cancel_time = 0  # Thời điểm nhận tín hiệu hủy tìm kiếm
         self.start_depth = 1
-        # Initialize search_diagnostics
-        self.search_diagnostics = SearchDiagnostics()
 
         # References and initialization
         self.evaluation = Evaluation()
@@ -59,7 +57,6 @@ class Searcher:
         self.debug_info = "Starting search with FEN " + self.board.fen()
         self.search_cancelled = False
         self.cancel_time = 0
-        self.search_diagnostics = SearchDiagnostics()
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
 
@@ -111,9 +108,6 @@ class Searcher:
                 if self.has_searched_at_least_one_move:
                     self.best_move = self.best_move_this_iteration
                     self.best_eval = self.best_eval_this_iteration
-                    self.search_diagnostics.move = self.format_move(self.best_move)
-                    self.search_diagnostics.eval = self.best_eval
-                    self.search_diagnostics.move_is_from_partial_search = True
                     self.debug_info += f"\nUsing partial search result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
 
                 self.debug_info += "\nSearch aborted"
@@ -131,11 +125,6 @@ class Searcher:
                 print(f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval} (Time: {iter_time:.2f}s)")
                 self.best_eval_this_iteration = -float('inf')
                 self.best_move_this_iteration = chess.Move.null()
-
-                # Update diagnostics
-                self.search_diagnostics.num_completed_iterations = search_depth
-                self.search_diagnostics.move = self.format_move(self.best_move)
-                self.search_diagnostics.eval = self.best_eval
 
                 # Exit search if found a mate within search depth
                 if (self.is_mate_score(self.best_eval) and
@@ -327,7 +316,6 @@ class Searcher:
                 if ply_from_root > 0:
                     self.repetition_table.try_pop()
 
-                self.search_diagnostics.num_cutoffs += 1
                 return beta
 
             # Found a new best move in this position
@@ -366,10 +354,8 @@ class Searcher:
 
         # Stand-pat evaluation
         eval_score = self.evaluation.evaluate(self.board)
-        self.search_diagnostics.num_positions_evaluated += 1
 
         if eval_score >= beta:
-            self.search_diagnostics.num_cutoffs += 1
             return beta
 
         if eval_score > alpha:
@@ -391,7 +377,6 @@ class Searcher:
                 return 0
 
             if eval_score >= beta:
-                self.search_diagnostics.num_cutoffs += 1
                 return beta
 
             if eval_score > alpha:
@@ -467,21 +452,3 @@ class Searcher:
     def get_transposition_table(self):
         """Return the transposition table"""
         return self.transposition_table
-
-
-class SearchDiagnostics:
-    """Class to hold search statistics and diagnostics"""
-    def __init__(self):
-        self.num_completed_iterations = 0
-        self.num_positions_evaluated = 0
-        self.num_cutoffs = 0
-
-        self.move_val = ""
-        self.move = ""
-        self.eval = 0
-        self.move_is_from_partial_search = False
-        self.num_q_checks = 0
-        self.num_q_mates = 0
-
-        self.is_book = False
-        self.max_extension_reached_in_search = 0

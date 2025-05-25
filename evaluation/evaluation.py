@@ -321,7 +321,7 @@ class Evaluation:
     @staticmethod
     def update(weights:np.array):
         """update giá trị từ array"""
-        base_index=64*8
+        base_index=0
 
         Evaluation.pawn_value = weights[base_index]
         Evaluation.knight_value = weights[base_index+1]
@@ -331,7 +331,6 @@ class Evaluation:
 
         Evaluation.king_pawn_shield_scores = weights[base_index +5 : base_index + 11].tolist()
         Evaluation.passed_pawn_bonuses = weights[base_index +11 : base_index + 18].tolist()
-        Evaluation.isolated_pawn_penalty_by_count = weights[base_index + 18 : base_index + 27].tolist()
 
 
     @staticmethod
@@ -348,9 +347,7 @@ class Evaluation:
         # Gộp tất cả vào một list
         full_list = base_values + \
                     Evaluation.king_pawn_shield_scores + \
-                    Evaluation.passed_pawn_bonuses + \
-                    Evaluation.isolated_pawn_penalty_by_count
-
+                    Evaluation.passed_pawn_bonuses
         return np.array(full_list)
     
 
@@ -365,7 +362,6 @@ class Evaluation:
             "queen_value": Evaluation.queen_value,
             "king_pawn_shield_scores": Evaluation.king_pawn_shield_scores,
             "passed_pawn_bonuses": Evaluation.passed_pawn_bonuses,
-            "isolated_pawn_penalty_by_count": Evaluation.isolated_pawn_penalty_by_count
         }
 
     @staticmethod
@@ -389,7 +385,6 @@ class Evaluation:
             Evaluation.queen_value = data["queen_value"]
             Evaluation.king_pawn_shield_scores = data["king_pawn_shield_scores"]
             Evaluation.passed_pawn_bonuses = data["passed_pawn_bonuses"]
-            Evaluation.isolated_pawn_penalty_by_count = data["isolated_pawn_penalty_by_count"]
         except Exception:
             print("co loi trong load file Evaluation")
 

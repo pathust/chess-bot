@@ -160,12 +160,7 @@ class PieceSquareTable:
     def load_from_json():
         """Load tables từ file JSON"""
         try:
-            with open(PieceSquareTable.path, 'r') as f:
-                data = json.load(f)
-            PieceSquareTable.tables = [
-                [table[chess.square_name(i)] for i in range(64)]
-                for table in data
-            ]
+            pass
         except Exception:
             print("co loi trong load file PieceSquareTable")
     

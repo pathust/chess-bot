@@ -75,6 +75,7 @@ class ChessBot:
             return False
         except ValueError:
             return False
+        
 
     def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
         """
@@ -89,30 +90,33 @@ class ChessBot:
         Returns:
             int: Thời gian suy nghĩ được đề xuất (ms)
         """
-
         # Lấy thời gian còn lại của bên đang đi
         my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
         my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
-        offset_time = 30 #thời gian dự tính để xử lý mỗi ply
-        centiMTG = 5051
+        offset = 30
 
-        # Make sure timeLeft is > 0 since we may use it as a divisor
-        timeLeft =max (5, my_time_remaining_ms+ (my_increment_ms * (centiMTG - 100) - offset_time * (200 + centiMTG)) / 100)   
-        originalTimeAdjust = 0.3128 * math.log10(timeLeft) - 0.4354
-        if originalTimeAdjust < 0:
-            originalTimeAdjust = 0.13
+        ply = self.board.ply()
+        if ply < 16:
+            moves_to_go = max(40, 65 - ply)  # Opening: expect longer game
+        elif ply < 40:
+            moves_to_go = max(30, 55 - ply)  # Middlegame: moderate estimate
+        else:
+            moves_to_go = max(20, 50 - ply // 2)  # Endgame: fewer moves expected
 
-        # Calculate time constants based on current time left.
-        logTimeInSec = math.log10(my_time_remaining_ms / 1000.0)
-        optConstant  = min(0.0032116 + 0.000321123 * logTimeInSec, 0.00508017)
-        
-        optScale = min(0.0121431 + math.pow(self.board.ply() + 2.94693, 0.461073) * optConstant,
-                            0.213035 * my_time_remaining_ms / timeLeft) * originalTimeAdjust
-        
-        optScale = min (0.5,optScale)        
-        opt_time = optScale * my_time_remaining_ms
-        return min(opt_time, max(10, timeLeft * 0.03))
+        time_left = my_time_remaining_ms + moves_to_go*(my_increment_ms - offset)
+        base_time_ms = my_time_remaining_ms / moves_to_go 
+        opt_scale = 1
+        if ply <= 16:
+            opt_scale =1+ (20-ply)/15
+        elif ply < 40:
+            opt_scale = 1 + 0.25*(40-ply)/40
 
+        # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
+        min_think_time = min(30, my_time_remaining_ms * 0.25)
+        opt_time= int(max(min_think_time, base_time_ms*opt_scale))
+        self.searcher.update_start_depth(opt_time)
+        return opt_time
+    
     def think_timed(self, time_ms):
         """
         Bắt đầu tìm kiếm nước đi tốt nhất với thời gian giới hạn

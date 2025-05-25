@@ -14,6 +14,7 @@ class Searcher:
     immediate_mate_score = 100000
     positive_infinity = 9999999
     negative_infinity = -positive_infinity
+    minimize_start_time=[0, 722.73, 8822.65, 12089.35, 21323.83, 47866.55, 101753.56]
 
     def __init__(self, board: chess.Board, opening_book_path=None):
         self.board = board
@@ -29,7 +30,7 @@ class Searcher:
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
         self.cancel_time = 0  # Thời điểm nhận tín hiệu hủy tìm kiếm
-        
+        self.start_depth = 1
         # Initialize search_diagnostics
         self.search_diagnostics = SearchDiagnostics()
 
@@ -98,7 +99,7 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(1, 20):
+        for search_depth in range(self.start_depth, 20):
             print(f"Starting depth {search_depth}")
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
@@ -397,6 +398,14 @@ class Searcher:
                 alpha = eval_score
 
         return alpha
+
+    def update_start_depth(self, search_time):
+        for depth, threshold in enumerate(Searcher.minimize_start_time):
+            if search_time > threshold * 1.5:
+                self.start_depth = depth
+            else:
+                break
+        print(f"start search at depth {self.start_depth}")
 
     def score_capture(self, move):
         """Score a capture move for move ordering in quiescence search"""

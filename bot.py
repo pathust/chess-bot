@@ -79,7 +79,7 @@ class ChessBot:
 
     def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
         """
-        Tính toán thời gian suy nghĩ hợp lý dựa trên thời gian còn lại
+        Tính toán thời gian suy nghĩ tối ưu cho chess engine với alpha-beta pruning và quiescence search
         
         Args:
             time_remaining_white_ms (int): Thời gian còn lại của trắng (ms)
@@ -90,32 +90,61 @@ class ChessBot:
         Returns:
             int: Thời gian suy nghĩ được đề xuất (ms)
         """
-        # Lấy thời gian còn lại của bên đang đi
+        # Lấy thông tin của bên đang đi
         my_time_remaining_ms = time_remaining_white_ms if self.board.turn else time_remaining_black_ms
         my_increment_ms = increment_white_ms if self.board.turn else increment_black_ms
-        offset = 30
-
+        
+        # Safety buffer để tránh timeout
+        safety_buffer = 100
+        
         ply = self.board.ply()
-        if ply < 16:
-            moves_to_go = max(40, 65 - ply)  # Opening: expect longer game
-        elif ply < 40:
-            moves_to_go = max(30, 55 - ply)  # Middlegame: moderate estimate
+        
+        # Ước tính số nước còn lại dựa trên giai đoạn game
+        if ply < 20:  # Opening
+            moves_to_go = max(50, 80 - ply)
+            phase_multiplier = 0.8  # Ít thời gian hơn trong opening
+        elif ply < 50:  # Middlegame  
+            moves_to_go = max(25, 60 - ply)
+            phase_multiplier = 1.2  # Nhiều thời gian hơn trong middlegame
+        else:  # Endgame
+            moves_to_go = max(15, 40 - ply // 3)
+            phase_multiplier = 1.0  # Thời gian cân bằng trong endgame
+        
+        # Tính thời gian cơ bản
+        effective_time = my_time_remaining_ms + moves_to_go * (my_increment_ms - safety_buffer)
+        base_time_ms = max(0, effective_time) / moves_to_go
+        
+        # Điều chỉnh dựa trên đặc điểm của alpha-beta với quiescence search
+        complexity_factor = 1.0
+        
+        complexity_factor *= 1.3  # Tăng 30% cho quiescence search
+        
+        # Alpha-beta với killer moves hiệu quả hơn ở depth cao
+        if ply > 30:  # Endgame positions benefit more from deeper search
+            complexity_factor *= 1.15
+        
+        # Điều chỉnh theo tình huống thời gian
+        if my_time_remaining_ms < 30000:  # Dưới 30 giây
+            time_pressure_factor = 0.7
+        elif my_time_remaining_ms < 60000:  # Dưới 1 phút
+            time_pressure_factor = 0.85
         else:
-            moves_to_go = max(20, 50 - ply // 2)  # Endgame: fewer moves expected
+            time_pressure_factor = 1.0
+        
+        # Tính thời gian cuối cùng
+        optimal_time = base_time_ms * phase_multiplier * complexity_factor * time_pressure_factor
+        
+        # Giới hạn thời gian
+        min_think_time = 50
+        max_think_time = min(my_time_remaining_ms // 3, 60000)  # Không quá 1/3 thời gian còn lại hoặc 1 phút
+        
+        final_time = int(max(min_think_time, min(optimal_time, max_think_time)))
+        
+        # Cập nhật depth cho searcher dựa trên thời gian
+        self.searcher.update_start_depth(final_time)
+        
+        return final_time
 
-        time_left = my_time_remaining_ms + moves_to_go*(my_increment_ms - offset)
-        base_time_ms = my_time_remaining_ms / moves_to_go 
-        opt_scale = 1
-        if ply <= 16:
-            opt_scale =1+ (20-ply)/15
-        elif ply < 40:
-            opt_scale = 1 + 0.25*(40-ply)/40
-
-        # Đảm bảo thời gian tối thiểu là 50ms hoặc 25% thời gian còn lại
-        min_think_time = min(30, my_time_remaining_ms * 0.25)
-        opt_time= int(max(min_think_time, base_time_ms*opt_scale))
-        self.searcher.update_start_depth(opt_time)
-        return opt_time
     
     def think_timed(self, time_ms):
         """

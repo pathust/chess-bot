@@ -204,10 +204,11 @@ class SavedGameManager:
         return False, None
 
 
+# Modifications needed in ui/components/sidebar.py
+
 class AIControlPanel(QScrollArea):
     """
-    AI control panel with simplified interface - no AI difficulty settings.
-    Provides only game management buttons for better usability.
+    Control panel with game management buttons - now supports both Human vs AI and AI vs AI modes.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -237,10 +238,10 @@ class AIControlPanel(QScrollArea):
         
         # Create main layout with moderate spacing
         self.main_layout = QVBoxLayout(inner_widget)
-        self.main_layout.setSpacing(10) # Reduced spacing
-        self.main_layout.setContentsMargins(10, 10, 10, 10) # Reduced margins
+        self.main_layout.setSpacing(10)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Title header
+        # Title header - will be updated based on mode
         self.title = QLabel("Game Controls")
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setStyleSheet("""
@@ -256,17 +257,17 @@ class AIControlPanel(QScrollArea):
         # Create grid layout for more compact button arrangement
         button_grid = QWidget()
         grid_layout = QGridLayout(button_grid)
-        grid_layout.setSpacing(8) # Tight spacing between buttons
+        grid_layout.setSpacing(8)
         
         # Make buttons smaller and arrange in a grid
-        button_height = 45  # Smaller height
+        button_height = 45
         
-        # Start button (top-left)
+        # Start button (top-left) - ALWAYS VISIBLE NOW
         self.start_button = ControlButton("▶ Start", Config.START_BUTTON_COLOR)
         self.start_button.setFixedHeight(button_height)
         grid_layout.addWidget(self.start_button, 0, 0)
 
-        # Pause button (top-right)
+        # Pause button (top-right) - ALWAYS VISIBLE NOW
         self.pause_button = ControlButton("⏸ Pause", Config.PAUSE_BUTTON_COLOR)
         self.pause_button.setFixedHeight(button_height)
         grid_layout.addWidget(self.pause_button, 0, 1)
@@ -295,7 +296,7 @@ class AIControlPanel(QScrollArea):
         self.undo_button_container = QWidget()
         self.undo_button_layout = QVBoxLayout(self.undo_button_container)
         self.undo_button_layout.setContentsMargins(0, 0, 0, 0)
-        grid_layout.addWidget(self.undo_button_container, 3, 0, 1, 2)  # Span both columns
+        grid_layout.addWidget(self.undo_button_container, 3, 0, 1, 2)
         
         # Add the grid to the main layout
         self.main_layout.addWidget(button_grid)
@@ -304,18 +305,12 @@ class AIControlPanel(QScrollArea):
         self.main_layout.addStretch(1)
         
         # Set initial button states
+        self.start_button.setEnabled(True)   # Changed: enable start button initially
         self.pause_button.setEnabled(False)
         
-        # For backward compatibility - create hidden dummy sliders that don't do anything
-        # but have the required signals to prevent connection errors
+        # Create dummy sliders for backward compatibility
         from PyQt5.QtCore import pyqtSignal
         
-        # Create a hidden dummy widget for the depth slider
-        self.depth_container = QWidget()
-        self.depth_container.hide()  # Hide it completely
-        self.main_layout.addWidget(self.depth_container)
-        
-        # Create a minimal slider class that just has the valueChanged signal
         class DummySlider(QWidget):
             valueChanged = pyqtSignal(int)
             
@@ -327,7 +322,7 @@ class AIControlPanel(QScrollArea):
         
         # Create the dummy sliders
         self.depth_slider = DummySlider()
-        self.speed_slider = self.depth_slider  # Same object for both
+        self.speed_slider = self.depth_slider
         
         # Create a dummy value label for compatibility
         self.depth_value = QLabel("")
@@ -336,12 +331,17 @@ class AIControlPanel(QScrollArea):
     def set_human_ai_mode(self):
         """Configure the panel for Human vs AI mode."""
         self.title.setText("Game Controls")
-        self.start_button.hide()
-        self.pause_button.hide()
+        self.start_button.setText("▶ Start Game")
+        self.pause_button.setText("⏸ Pause Game")
+        # Don't hide the buttons anymore - they're needed for timer control
+        self.start_button.show()
+        self.pause_button.show()
     
     def set_ai_ai_mode(self):
         """Configure the panel for AI vs AI mode."""
         self.title.setText("AI vs AI Controls")
+        self.start_button.setText("▶ Start AI Game")
+        self.pause_button.setText("⏸ Pause AI Game")
         self.start_button.show()
         self.pause_button.show()
     

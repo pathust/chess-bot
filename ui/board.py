@@ -216,12 +216,16 @@ class ChessBoard(QMainWindow):
         sidebar_splitter.setSizes([300, 300])
         
         # Connect control panel signals
-        self.control_panel.start_button.clicked.connect(self.start_ai_game)
-        self.control_panel.pause_button.clicked.connect(self.pause_ai_game)
+        self.control_panel.start_button.clicked.connect(self.start_game)  # CHANGED
+        if self.mode == "human_ai":
+            self.control_panel.pause_button.clicked.connect(self.pause_human_ai_game)  # NEW
+        else:
+            self.control_panel.pause_button.clicked.connect(self.pause_ai_game)  # EXISTING
         self.control_panel.reset_button.clicked.connect(self.reset_game)
         self.control_panel.home_button.clicked.connect(self.return_to_home)
         self.control_panel.save_button.clicked.connect(self.save_game)
         
+        self.control_panel.start_button.setEnabled(True)   # CHANGED: Enable start button initially
         self.control_panel.pause_button.setEnabled(False)
         self.control_panel.depth_slider.valueChanged.connect(self.update_ai_depth)
         
@@ -230,24 +234,31 @@ class ChessBoard(QMainWindow):
         self.main_splitter.addWidget(sidebar)
         self.main_splitter.setSizes([700, 300])
         
-        # Hide AI controls in Human vs AI mode
         if self.mode == "human_ai":
-            self.control_panel.start_button.hide()
-            self.control_panel.pause_button.hide()
+            # Show start button for Human vs AI mode too
+            self.control_panel.start_button.show()
+            self.control_panel.pause_button.show()
             
+            self.control_panel.start_button.setText("▶ Start Game")
+            self.control_panel.pause_button.setText("⏸ Pause Game")
+            
+            # Update the title
             for i in range(self.control_panel.widget().layout().count()):
                 item = self.control_panel.widget().layout().itemAt(i)
                 if item.widget() and isinstance(item.widget(), QLabel):
-                    if "AI Controls" in item.widget().text():
-                        item.widget().setText("AI Difficulty")
+                    if "AI Controls" in item.widget().text() or "AI Difficulty" in item.widget().text():
+                        item.widget().setText("Game Controls")
                         break
+        else:
+            # AI vs AI mode
+            self.control_panel.start_button.setText("▶ Start AI Game")
+            self.control_panel.pause_button.setText("⏸ Pause AI Game")
         
         # Set initial status
         if self.mode == "human_ai":
-            if self.turn == 'human':
-                self.thinking_indicator.show_status("Your turn")
+            self.thinking_indicator.show_status("Press 'Start Game' to begin")
         else:
-            self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+            self.thinking_indicator.show_status("Press 'Start AI Game' to begin")
         
         # Set up timers
         self.ai_timer = QTimer(self)
@@ -300,10 +311,6 @@ class ChessBoard(QMainWindow):
         
         self.chess_timer.set_time_mode(enabled, white_time_ms, black_time_ms)
         
-        # Start timer for the current player if game is active
-        if enabled and not self.board.is_game_over():
-            current_player = 'white' if self.board.turn == chess.WHITE else 'black'
-            self.chess_timer.start_timer(current_player)
 
     
     def on_time_expired(self, player):
@@ -340,6 +347,54 @@ class ChessBoard(QMainWindow):
         
         # Show game over popup
         self.show_game_over_popup(custom_message=winner_text)
+    
+    def start_game(self):
+        """Start the game - works for both Human vs AI and AI vs AI modes."""
+        if self.mode == "human_ai":
+            self.start_human_ai_game()
+        else:
+            self.start_ai_game()
+    
+    def start_human_ai_game(self):
+        """Start Human vs AI game with timer support."""
+        if not self.board.is_game_over():
+            # Update button states
+            self.control_panel.start_button.setEnabled(False)
+            self.control_panel.pause_button.setEnabled(True)
+            
+            # Start timer for current player if time mode is enabled
+            if self.is_time_mode:
+                current_player = 'white' if self.board.turn == chess.WHITE else 'black'
+                self.chess_timer.start_timer(current_player)
+            
+            # Update status based on whose turn it is
+            if self.turn == 'human':
+                self.thinking_indicator.show_status("Your turn - Game Started!")
+                # Clear status after 2 seconds
+                QTimer.singleShot(2000, lambda: self.thinking_indicator.show_status("Your turn"))
+            else:
+                # If it's AI's turn, start AI immediately
+                self.thinking_indicator.start_thinking("AI")
+                QTimer.singleShot(100, self.ai_move)
+
+    def pause_human_ai_game(self):
+        """Pause Human vs AI game."""
+        # Update button states
+        self.control_panel.start_button.setEnabled(True)
+        self.control_panel.pause_button.setEnabled(False)
+        
+        # Pause the chess timer
+        if self.is_time_mode:
+            self.chess_timer.pause_timer()
+        
+        # Stop any AI computation
+        if hasattr(self, 'ai_manager'):
+            self.ai_manager.cancel_computation()
+        
+        self.ai_computation_active = False
+        self.thinking_indicator.stop_thinking()
+        self.thinking_indicator.show_status("Game paused")
+
     
     def start_player_timer(self, player):
         """Start the timer for a specific player."""
@@ -533,12 +588,9 @@ class ChessBoard(QMainWindow):
             
             # Update status message
             if self.mode == "human_ai":
-                if self.turn == 'human':
-                    self.thinking_indicator.show_status("Your turn")
-                else:
-                    self.thinking_indicator.show_status("AI is thinking...")
+                self.thinking_indicator.show_status("Press 'Start Game' to resume")
             else:
-                self.thinking_indicator.show_status("Press 'Start' to continue AI vs AI game")
+                self.thinking_indicator.show_status("Press 'Start AI Game' to resume")
             
             return True
         except Exception as e:
@@ -693,7 +745,7 @@ class ChessBoard(QMainWindow):
             self.control_panel.pause_button.setEnabled(True)
             self.turn = 'ai1' if self.board.turn == chess.WHITE else 'ai2'
             
-            # Start timer for current player
+            # Start timer for current player if time mode is enabled
             if self.is_time_mode:
                 current_player = 'white' if self.turn == 'ai1' else 'black'
                 self.chess_timer.start_timer(current_player)
@@ -763,7 +815,7 @@ class ChessBoard(QMainWindow):
             self.ai_bot2.set_position()  # Reset to starting position
             self.ai_bot2.notify_new_game()
             self.turn = 'ai1'
-            
+        
         self.control_panel.start_button.setEnabled(True)
         self.control_panel.pause_button.setEnabled(False)
         
@@ -804,23 +856,23 @@ class ChessBoard(QMainWindow):
                     
                     # Set appropriate status
                     if self.mode == "human_ai":
-                        self.thinking_indicator.show_status("Your turn")
+                        self.thinking_indicator.show_status("Press 'Start Game' to begin")
                     else:
-                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+                        self.thinking_indicator.show_status("Press 'Start AI Game' to begin")
                 else:
                     # User canceled - just show status without time mode
                     if self.mode == "human_ai":
-                        self.thinking_indicator.show_status("Your turn")
+                        self.thinking_indicator.show_status("Press 'Start Game' to begin")
                     else:
-                        self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+                        self.thinking_indicator.show_status("Press 'Start AI Game' to begin")
                         
             except Exception as e:
                 print(f"Error in time dialog: {str(e)}")
                 # Fallback to no time mode
                 if self.mode == "human_ai":
-                    self.thinking_indicator.show_status("Your turn")
+                    self.thinking_indicator.show_status("Press 'Start Game' to begin")
                 else:
-                    self.thinking_indicator.show_status("Press 'Start' to begin AI vs AI game")
+                    self.thinking_indicator.show_status("Press 'Start AI Game' to begin")
         
         # Show time dialog after UI updates
         QTimer.singleShot(200, show_time_dialog_and_restart)

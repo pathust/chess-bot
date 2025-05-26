@@ -96,7 +96,7 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(self.start_depth, 20):
+        for search_depth in range(self.start_depth, 10):
             print(f"Starting depth {search_depth}")
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"

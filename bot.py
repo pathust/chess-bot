@@ -156,7 +156,8 @@ class ChessBot:
         print(f"Starting timed search with {time_ms} ms")
         self.is_thinking = True
 
-        if self.searcher.opening_book and self.board.ply > 20:
+        if self.searcher.opening_book and self.board.ply() > 20:
+            print(self.board.ply)
             self.searcher.opening_book = None
 
         # Hủy timer tìm kiếm hiện tại nếu có

@@ -79,7 +79,7 @@ class IterativeChessBotAnalyzer:
                 
                 # Run single search to max depth - this captures all depth results
                 start_time = time.time()
-                best_move = bot.get_best_move(max_depth=max_depth, time_ms=30000)  # 30 second timeout
+                best_move = bot.get_best_move(max_depth=max_depth, time_ms=60000)  # 60 second timeout
                 total_time = time.time() - start_time
                 
                 # Get depth results from the search
@@ -683,7 +683,7 @@ def analyze_single_fen(fen: str, max_depth: int = 9, opening_book_path: str = "r
     
     print(f"🔍 Analyzing position: {fen[:50]}...")
     start_time = time.time()
-    best_move = bot.get_best_move(max_depth=max_depth, time_ms=30000)
+    best_move = bot.get_best_move(max_depth=max_depth, time_ms=60000)
     total_time = time.time() - start_time
     
     depth_results = bot.get_depth_results()
@@ -698,8 +698,8 @@ def analyze_single_fen(fen: str, max_depth: int = 9, opening_book_path: str = "r
 # Example usage
 if __name__ == "__main__":
     # Load FEN data
-    df_fen = pd.read_csv('resources/train.csv')
-    sample_fen_list = df_fen.sample(n=100)['FEN'].to_list()
+    df_fen = pd.read_csv('sample.csv')
+    sample_fen_list = df_fen.sample(n=400)['FEN'].to_list()
     
     print("🔥 Iterative Deepening Chess Bot Analysis - Optimized Version")
     print("=" * 80)

@@ -12,6 +12,7 @@ class ChessBot:
         
         Args:
             initial_fen (str, optional): Vị trí bàn cờ FEN ban đầu
+            opening_book_path (str, optional): Đường dẫn đến opening book
         """
         # Khởi tạo bàn cờ
         if initial_fen:
@@ -20,7 +21,7 @@ class ChessBot:
             self.board = chess.Board()
 
         # Tạo searcher cho việc tìm kiếm nước đi tốt nhất
-        print("Initializing searcher")
+        # print("Initializing searcher")
         self.searcher = Searcher(self.board, opening_book_path=opening_book_path)
 
         # Trạng thái tìm kiếm
@@ -54,6 +55,8 @@ class ChessBot:
             for move in moves:
                 self.board.push_uci(move)
 
+        # Cập nhật searcher với board mới
+        self.searcher.board = self.board
         # Xóa dữ liệu tìm kiếm cũ khi thay đổi vị trí
         self.searcher.clear_for_new_position()
 
@@ -71,11 +74,12 @@ class ChessBot:
             move = chess.Move.from_uci(move_uci)
             if move in self.board.legal_moves:
                 self.board.push(move)
+                # Cập nhật searcher với board mới
+                self.searcher.board = self.board
                 return True
             return False
         except ValueError:
             return False
-        
 
     def choose_think_time(self, time_remaining_white_ms, time_remaining_black_ms, increment_white_ms, increment_black_ms):
         """
@@ -145,7 +149,6 @@ class ChessBot:
         
         return final_time
 
-    
     def think_timed(self, time_ms):
         """
         Bắt đầu tìm kiếm nước đi tốt nhất với thời gian giới hạn
@@ -153,11 +156,12 @@ class ChessBot:
         Args:
             time_ms (int): Thời gian tìm kiếm tối đa (ms)
         """
-        print(f"Starting timed search with {time_ms} ms")
+        # print(f"Starting timed search with {time_ms} ms")
         self.is_thinking = True
 
+        # Disable opening book after 20 moves
         if self.searcher.opening_book and self.board.ply() > 20:
-            print(self.board.ply)
+            # print(f"Disabling opening book at ply {self.board.ply()}")
             self.searcher.opening_book = None
 
         # Hủy timer tìm kiếm hiện tại nếu có
@@ -198,24 +202,24 @@ class ChessBot:
             if not self.search_cancelled:
                 # Bắt đầu tìm kiếm
                 try:
-                    print("Starting search")
+                    # print("Starting search")
                     start = time.time()
                     self.searcher.start_search()
 
                     # Sau khi tìm kiếm hoàn thành, lấy nước đi tốt nhất từ searcher
                     best_move = self.searcher.best_move
-                    print(f"Search completed, best_move: {best_move}")
+                    # print(f"Search completed, best_move: {best_move}")
 
                     # Thông báo kết quả
                     if self.is_thinking:
                         self._search_completed(best_move)
                     duration = time.time() - start
-                    print("Excuted Time: ", duration)
+                    # print("Executed Time: ", duration)
 
                 except Exception as e:
-                    print(f"Error in search thread: {str(e)}")
+                    # print(f"Error in search thread: {str(e)}")
                     import traceback
-                    traceback.print_exc()
+                    # traceback.print_exc()
 
                     # Nếu lỗi, trả về nước đi đầu tiên nếu có
                     legal_moves = list(self.board.legal_moves)
@@ -233,11 +237,11 @@ class ChessBot:
         """
         # Ghi lại thời điểm khi tìm kiếm hoàn thành
         search_complete_time = time.time()
-        print(f"SEARCH_COMPLETED: {search_complete_time:.6f}")
+        # print(f"SEARCH_COMPLETED: {search_complete_time:.6f}")
         
         if hasattr(self, 'end_search_start_time') and self.end_search_start_time > 0:
             delay = search_complete_time - self.end_search_start_time
-            print(f"SEARCH_CANCEL_DELAY: {delay:.6f} seconds")
+            # print(f"SEARCH_CANCEL_DELAY: {delay:.6f} seconds")
 
         if not self.is_thinking:
             return
@@ -252,10 +256,10 @@ class ChessBot:
         # Gọi callback với nước đi tốt nhất
         if self.on_move_chosen and move and not (hasattr(move, 'null') and move.null()):
             move_uci = move.uci()
-            print(f"Calling callback with move: {move_uci}")
+            # print(f"Calling callback with move: {move_uci}")
             self.on_move_chosen(move_uci)
         elif self.on_move_chosen:
-            print("No valid move found or null move")
+            # print("No valid move found or null move")
             self.on_move_chosen(None)
 
     def _end_search(self, search_id=None):
@@ -266,8 +270,8 @@ class ChessBot:
             search_id (int, optional): ID của tìm kiếm cần kết thúc
         """
         # Ghi lại thời điểm bắt đầu thực hiện end_search
-        end_search_start_time = time.time()
-        print(f"END_SEARCH_START: {end_search_start_time:.6f}")
+        self.end_search_start_time = time.time()
+        # print(f"END_SEARCH_START: {self.end_search_start_time:.6f}")
         
         # Nếu search_id được chỉ định, chỉ kết thúc tìm kiếm đó
         if search_id is not None and search_id != self.current_search_id:
@@ -282,7 +286,7 @@ class ChessBot:
         if self.is_thinking:
             self.search_cancelled = True
             self.searcher.end_search()
-            print(f"END_SEARCH_SIGNAL_SENT: {time.time():.6f}")
+            # print(f"END_SEARCH_SIGNAL_SENT: {time.time():.6f}")
 
             # Lấy nước đi tốt nhất hiện tại nếu có
             if hasattr(self.searcher, 'best_move') and self.searcher.best_move:
@@ -294,29 +298,28 @@ class ChessBot:
         """Dừng quá trình tìm kiếm hiện tại"""
         self._end_search()
 
-    def get_best_move(self, depth=3, time_ms=None):
+    def get_best_move(self, max_depth=9, time_ms=None):
         """
-        Tìm và trả về nước đi tốt nhất (blocking)
+        Tìm và trả về nước đi tốt nhất (blocking) - Modified to capture depth results
         
         Args:
-            depth (int): Độ sâu tìm kiếm
+            max_depth (int): Độ sâu tìm kiếm tối đa (default: 9)
             time_ms (int, optional): Thời gian tìm kiếm tối đa (ms)
             
         Returns:
             str: Nước đi tốt nhất ở định dạng UCI
         """
-        print(f"Finding best move at depth {depth}, time limit: {time_ms} ms")
+        # print(f"Finding best move with max depth {max_depth}, time limit: {time_ms} ms")
 
         # Thiết lập độ sâu cho searcher
-        if hasattr(self.searcher, 'max_depth'):
-            self.searcher.max_depth = depth
+        self.searcher.max_depth = max_depth
 
         # Tạo một Event để đồng bộ
         result_event = Event()
         best_move = [None]  # Sử dụng list để lưu kết quả từ callback
 
         def on_move_found(move):
-            print(f"Best move found: {move}")
+            # print(f"Best move found: {move}")
             best_move[0] = move
             result_event.set()
 
@@ -328,14 +331,62 @@ class ChessBot:
         self.think_timed(time_ms if time_ms else 30000)  # Mặc định 30 giây
 
         # Chờ kết quả
-        print("Waiting for search result...")
+        # print("Waiting for search result...")
         result_event.wait()
-        print(f"Search completed, result: {best_move[0]}")
+        # print(f"Search completed, result: {best_move[0]}")
 
         # Khôi phục callback cũ
         self.on_move_chosen = old_callback
 
         return best_move[0]
+
+    def get_depth_results(self):
+        """
+        Get detailed results for each depth from the last search
+        
+        Returns:
+            dict: Dictionary containing results for each depth
+                  Format: {depth: {'best_move': str, 'execution_time': float, 'eval': int, ...}}
+        """
+        if hasattr(self.searcher, 'get_depth_results'):
+            return self.searcher.get_depth_results()
+        else:
+            # Fallback for older searcher versions
+            # print("Warning: Searcher doesn't support depth results capture")
+            return {}
+
+    def was_opening_book_used(self):
+        """
+        Check if the opening book was used in the last search
+        
+        Returns:
+            bool: True if opening book was used
+        """
+        if hasattr(self.searcher, 'used_opening_book'):
+            return self.searcher.used_opening_book
+        return False
+
+    def get_search_statistics(self):
+        """
+        Get comprehensive statistics from the last search
+        
+        Returns:
+            dict: Search statistics including timing, nodes, etc.
+        """
+        depth_results = self.get_depth_results()
+        if not depth_results:
+            return {}
+        
+        stats = {
+            'total_depths_searched': len(depth_results),
+            'max_depth_reached': max(depth_results.keys()) if depth_results else 0,
+            'total_time': sum(r.get('execution_time', 0) for r in depth_results.values()),
+            'opening_book_used': self.was_opening_book_used(),
+            'completed_depths': len([r for r in depth_results.values() if r.get('completed', False)]),
+            'partial_depths': len([r for r in depth_results.values() if r.get('partial_search', False)])
+        }
+        
+        return stats
 
     def get_board_fen(self):
         """Trả về trạng thái bàn cờ dưới dạng FEN"""
@@ -370,12 +421,139 @@ class ChessBot:
         """Trả về bàn cờ dưới dạng Unicode để hiển thị trong console"""
         return str(self.board)
 
+    def get_board_evaluation(self):
+        """
+        Get current board evaluation
+        
+        Returns:
+            float: Board evaluation from engine's perspective
+        """
+        if hasattr(self.searcher, 'best_eval'):
+            return self.searcher.best_eval
+        return 0
+
+    def get_principal_variation(self):
+        """
+        Get the principal variation (best line) from the last search
+        
+        Returns:
+            list: List of moves in UCI format representing the best line
+        """
+        # This would require additional implementation in the searcher
+        # For now, return the best move found
+        if hasattr(self.searcher, 'best_move') and self.searcher.best_move:
+            return [self.searcher.best_move.uci()]
+        return []
+
     def notify_new_game(self):
         """Thông báo cho bot rằng một ván cờ mới đã bắt đầu"""
         self.searcher.clear_for_new_position()
+        # Reset board to starting position
+        self.board.reset()
+        self.searcher.board = self.board
 
     def quit(self):
         """Dọn dẹp tài nguyên khi kết thúc"""
         self.stop_thinking()
         self.search_cancelled = True
         self.search_event.set()  # Wake up thread để nó có thể thoát
+
+    # Utility methods for analysis
+    def analyze_position(self, max_depth=9, time_ms=30000):
+        """
+        Analyze current position and return comprehensive results
+        
+        Args:
+            max_depth (int): Maximum depth to analyze
+            time_ms (int): Time limit in milliseconds
+            
+        Returns:
+            dict: Comprehensive analysis results
+        """
+        # print(f"🔍 Analyzing position: {self.get_board_fen()}")
+        
+        start_time = time.time()
+        best_move = self.get_best_move(max_depth=max_depth, time_ms=time_ms)
+        analysis_time = time.time() - start_time
+        
+        depth_results = self.get_depth_results()
+        search_stats = self.get_search_statistics()
+        
+        analysis = {
+            'fen': self.get_board_fen(),
+            'best_move': best_move,
+            'analysis_time': analysis_time,
+            'depth_results': depth_results,
+            'search_statistics': search_stats,
+            'evaluation': self.get_board_evaluation(),
+            'opening_book_used': self.was_opening_book_used(),
+            'legal_moves_count': len(list(self.board.legal_moves)),
+            'game_phase': self._get_game_phase(),
+            'position_complexity': self._estimate_position_complexity()
+        }
+        
+        return analysis
+
+    def _get_game_phase(self):
+        """Estimate the current game phase"""
+        ply = self.board.ply()
+        if ply < 20:
+            return "opening"
+        elif ply < 50:
+            return "middlegame"
+        else:
+            return "endgame"
+
+    def _estimate_position_complexity(self):
+        """Estimate position complexity based on various factors"""
+        legal_moves = len(list(self.board.legal_moves))
+        piece_count = len(self.board.piece_map())
+        
+        # Simple complexity estimate
+        if legal_moves > 35 and piece_count > 20:
+            return "high"
+        elif legal_moves > 20 and piece_count > 15:
+            return "medium"
+        else:
+            return "low"
+
+    def compare_moves(self, moves, max_depth=6, time_per_move=5000):
+        """
+        Compare multiple moves and return analysis for each
+        
+        Args:
+            moves (list): List of moves in UCI format to compare
+            max_depth (int): Depth to analyze each move
+            time_per_move (int): Time limit per move in milliseconds
+            
+        Returns:
+            dict: Analysis results for each move
+        """
+        original_fen = self.get_board_fen()
+        move_analysis = {}
+        
+        for move_uci in moves:
+            try:
+                # Make the move
+                move = chess.Move.from_uci(move_uci)
+                if move not in self.board.legal_moves:
+                    move_analysis[move_uci] = {'error': 'Illegal move'}
+                    continue
+                
+                self.board.push(move)
+                self.searcher.board = self.board
+                
+                # Analyze the resulting position
+                analysis = self.analyze_position(max_depth=max_depth, time_ms=time_per_move)
+                move_analysis[move_uci] = analysis
+                
+                # Undo the move
+                self.board.pop()
+                self.searcher.board = self.board
+                
+            except Exception as e:
+                move_analysis[move_uci] = {'error': str(e)}
+                # Restore original position
+                self.set_position(fen=original_fen)
+        
+        return move_analysis

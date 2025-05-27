@@ -6,6 +6,7 @@ from search.repetition_table import RepetitionTable
 from search.transposition_table import TranspositionTable
 from search.opening_book import OpeningBook
 from evaluation.evaluation import Evaluation
+
 class Searcher:
     # Constants
     transposition_table_size_mb = 64
@@ -31,6 +32,12 @@ class Searcher:
         self.search_total_timer = time.time()
         self.cancel_time = 0  # Thời điểm nhận tín hiệu hủy tìm kiếm
         self.start_depth = 1
+        self.max_depth = 9  # Add max_depth attribute
+
+        # New: Store results for each depth during iterative deepening
+        self.depth_results = {}
+        self.search_start_time = 0
+        self.used_opening_book = False
 
         # References and initialization
         self.evaluation = Evaluation()
@@ -44,6 +51,10 @@ class Searcher:
 
     def start_search(self, on_search_complete=None):
         # Initialize search
+        self.search_start_time = time.time()
+        self.depth_results = {}
+        self.used_opening_book = False
+        
         self.best_eval_this_iteration = self.best_eval = 0
         self.best_move_this_iteration = self.best_move = chess.Move.null()
 
@@ -60,30 +71,46 @@ class Searcher:
         self.search_iteration_timer = time.time()
         self.search_total_timer = time.time()
 
-        print('initialized')
+        # print('initialized')
         if self.opening_book:
             book_move = self.opening_book.get_weighted_book_move(self.board)
             if book_move:
-                print(f'Book move found: {book_move.uci()}')
+                # print(f'Book move found: {book_move.uci()}')
                 self.best_move = book_move
+                self.used_opening_book = True
+                
+                # Record opening book result for all depths
+                book_time = time.time() - self.search_start_time
+                for depth in range(1, self.max_depth + 1):
+                    self.depth_results[depth] = {
+                        'depth': depth,
+                        'best_move': str(book_move),
+                        'execution_time': book_time,
+                        'eval': 0,  # Opening book doesn't provide eval
+                        'from_opening_book': True,
+                        'completed': True,
+                        'nodes_searched': 0,
+                        'cumulative_time': book_time * depth  # Fake cumulative time
+                    }
 
                 # ✅ GỌI CALLBACK ở đây
                 if on_search_complete:
                     on_search_complete(self.best_move)
                 return
+                
         # Search
         self.run_iterative_deepening_search()
         search_end_time = time.time()
-        print(f'SEARCH_END_TIME: {search_end_time:.6f}')
+        # print(f'SEARCH_END_TIME: {search_end_time:.6f}')
         
         # Nếu tìm kiếm bị hủy, hiện thông tin về độ trễ
         if self.cancel_time > 0:
             delay = search_end_time - self.cancel_time
-            print(f'CANCEL_TO_END_DELAY: {delay:.6f} seconds')
+            # print(f'CANCEL_TO_END_DELAY: {delay:.6f} seconds')
             
-        print('finished search')
+        # print('finished search')
         # Finish up
-        print(self.best_move)
+        # print(self.best_move)
         if self.best_move.null():
             # In the unlikely event no best move is found, take any legal move
             moves = list(self.board.legal_moves)
@@ -96,22 +123,47 @@ class Searcher:
         self.search_cancelled = False
 
     def run_iterative_deepening_search(self):
-        for search_depth in range(self.start_depth, 10):
-            print(f"Starting depth {search_depth}")
+        cumulative_time = 0
+        
+        for search_depth in range(self.start_depth, self.max_depth + 1):
+            # print(f"Starting depth {search_depth}")
+            depth_start_time = time.time()
+            
             self.has_searched_at_least_one_move = False
             self.debug_info += f"\nStarting Iteration: {search_depth}"
-            self.search_iteration_timer = time.time()
+            self.search_iteration_timer = depth_start_time
+
+            # Store initial state for this depth
+            initial_best_move = self.best_move_this_iteration
+            initial_best_eval = self.best_eval_this_iteration
 
             self.search(search_depth, 0, self.negative_infinity, self.positive_infinity)
+
+            depth_end_time = time.time()
+            depth_execution_time = depth_end_time - depth_start_time
+            cumulative_time += depth_execution_time
 
             if self.search_cancelled:
                 if self.has_searched_at_least_one_move:
                     self.best_move = self.best_move_this_iteration
                     self.best_eval = self.best_eval_this_iteration
                     self.debug_info += f"\nUsing partial search result: {self.format_move(self.best_move)} Eval: {self.best_eval}"
+                    
+                    # Record partial result
+                    self.depth_results[search_depth] = {
+                        'depth': search_depth,
+                        'best_move': str(self.best_move) if self.best_move else None,
+                        'execution_time': depth_execution_time,
+                        'eval': self.best_eval,
+                        'from_opening_book': False,
+                        'completed': False,
+                        'partial_search': True,
+                        'nodes_searched': getattr(self, 'nodes_searched', 0),
+                        'cumulative_time': cumulative_time
+                    }
 
                 self.debug_info += "\nSearch aborted"
-                print(f"Search aborted at depth {search_depth}")
+                # print(f"Search aborted at depth {search_depth}")
                 break
             else:
                 self.current_depth = search_depth
@@ -122,7 +174,21 @@ class Searcher:
                 self.debug_info += f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval} (Time: {iter_time:.2f}s)"
                 if self.is_mate_score(self.best_eval):
                     self.debug_info += f" Mate in ply: {self.num_ply_to_mate_from_score(self.best_eval)}"
-                print(f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval} (Time: {iter_time:.2f}s)")
+                # print(f"\nIteration result: {self.format_move(self.best_move)} Eval: {self.best_eval} (Time: {iter_time:.2f}s)")
+                
+                # Record successful result for this depth
+                self.depth_results[search_depth] = {
+                    'depth': search_depth,
+                    'best_move': str(self.best_move) if self.best_move else None,
+                    'execution_time': depth_execution_time,
+                    'eval': self.best_eval,
+                    'from_opening_book': False,
+                    'completed': True,
+                    'partial_search': False,
+                    'nodes_searched': getattr(self, 'nodes_searched', 0),
+                    'cumulative_time': cumulative_time
+                }
+                
                 self.best_eval_this_iteration = -float('inf')
                 self.best_move_this_iteration = chess.Move.null()
 
@@ -131,13 +197,18 @@ class Searcher:
                     self.num_ply_to_mate_from_score(self.best_eval) <= search_depth
                 ):
                     self.debug_info += "\nExiting search due to mate found within search depth"
+                    # print("Exiting search due to mate found")
                     break
+
+    def get_depth_results(self):
+        """Return results for each depth searched"""
+        return self.depth_results.copy()
 
     def end_search(self):
         """Được gọi để hủy tìm kiếm"""
         # Ghi lại thời điểm nhận tín hiệu hủy
         self.cancel_time = time.time()
-        print(f"CANCEL_SIGNAL_RECEIVED: {self.cancel_time:.6f}")
+        # print(f"CANCEL_SIGNAL_RECEIVED: {self.cancel_time:.6f}")
         self.search_cancelled = True
 
     def search(self,
@@ -330,8 +401,8 @@ class Searcher:
                     self.has_searched_at_least_one_move = True
                     
                     # Ghi log khi tìm thấy nước đi mới ở root
-                    if self.best_move_this_iteration != chess.Move.null():
-                        print(f"Found new best move: {self.format_move(move)} Eval: {eval_score}")
+                    # if self.best_move_this_iteration != chess.Move.null():
+                        # print(f"Found new best move: {self.format_move(move)} Eval: {eval_score}")
 
         if ply_from_root > 0:
             self.repetition_table.try_pop()
@@ -390,7 +461,7 @@ class Searcher:
                 self.start_depth = depth
             else:
                 break
-        print(f"start search at depth {self.start_depth}")
+        # print(f"start search at depth {self.start_depth}")
 
     def score_capture(self, move):
         """Score a capture move for move ordering in quiescence search"""

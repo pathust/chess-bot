@@ -1,78 +1,88 @@
-# Chess Bot API
+# ỨNG DỤNG CỜ VUA - CHESS GAME APPLICATION
 
-Một API đơn giản để tìm nước đi tốt nhất trong cờ vua sử dụng FastAPI và chess engine.
+## GIỚI THIỆU ĐỀ TÀI
 
-## Giới thiệu
+Ứng dụng cờ vua được phát triển bằng Python và PyQt5, cung cấp trải nghiệm chơi cờ vua hoàn chỉnh với AI thông minh. Ứng dụng hỗ trợ hai chế độ chơi chính: Người vs AI và AI vs AI, tích hợp hệ thống quản lý thời gian và các tính năng nâng cao.
 
-Chess Bot API là một dịch vụ web cho phép người dùng gửi trạng thái bàn cờ dưới dạng ký hiệu FEN (Forsyth-Edwards Notation) và nhận về nước đi tốt nhất được đề xuất bởi chess engine. API này được xây dựng với FastAPI và sử dụng một chess engine tùy chỉnh để tính toán các nước đi.
+### Tính năng chính:
+- Chế độ Người vs AI với độ khó có thể điều chỉnh
+- Chế độ AI vs AI để quan sát hai engine cờ vua thi đấu
+- Hệ thống quản lý thời gian linh hoạt với tăng thời gian
+- AI sử dụng thuật toán minimax với alpha-beta pruning
+- Giao diện đồ họa hiện đại với hiệu ứng animation
+- Lưu/tải game với metadata chi tiết
+- Phân tích nước đi với độ sâu tìm kiếm khác nhau
 
-## Yêu cầu hệ thống
+## CÁCH CÀI ĐẶT
 
-- Python 3.8 trở lên
-- pip (Python package installer)
+### Yêu cầu hệ thống:
+- Python 3.7 trở lên
+- Hệ điều hành: Windows, macOS, hoặc Linux
 
-## Hướng dẫn cài đặt
+### Các bước cài đặt:
 
-### 1. Clone repository
+1. **Cài đặt Python:**
+   - Tải Python từ https://python.org
+   - Đảm bảo chọn "Add Python to PATH" khi cài đặt
 
-```bash
-git clone https://github.com/pathust/chess-bot
-cd chess-bot
-```
+2. **Tải source code:**
+   ```
+   git clone https://github.com/pathust/chess-bot
+   ```
 
-### 2. Tạo môi trường ảo (venv)
+3. **Cài đặt các thư viện cần thiết:**
+   ```
+   pip install -r requirements.txt
+   ```
 
-#### Trên Windows:
+4. **Chạy ứng dụng:**
+   ```
+   python main.py
+   ```
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-```
+## HƯỚNG DẪN SỬ DỤNG
 
-#### Trên macOS/Linux:
+### Bắt đầu game:
+1. Chạy file `main.py`
+2. Chọn chế độ chơi: "Human vs AI" hoặc "AI vs AI"
+3. Thiết lập thời gian (tùy chọn)
+4. Bắt đầu chơi!
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
+### Điều khiển game:
+- **Start/Pause**: Bắt đầu/tạm dừng game
+- **Undo**: Hoàn tác nước đi
+- **Save**: Lưu game hiện tại
+- **Load**: Tải game đã lưu
+- **Resign**: Đầu hàng
+- **Reset**: Bắt đầu game mới
 
-### 3. Cài đặt các gói phụ thuộc
+### Thiết lập thời gian:
+- **Không giới hạn**: Chơi không áp lực thời gian
+- **Có thời gian**: Thiết lập thời gian tùy chỉnh
+- **Preset nhanh**: 1, 3, 5, 10, hoặc 15 phút
+- **Tăng thời gian**: Thêm giây sau mỗi nước đi
 
-```bash
-pip install -r requirements.txt
-```
+## XỬ LÝ LỖI
 
-## Chạy ứng dụng
+Nếu gặp lỗi khi chạy:
 
-Để khởi chạy ứng dụng với chế độ tự động tải lại khi có thay đổi, sử dụng lệnh:
+1. **Lỗi module không tìm thấy:**
+   ```
+   pip install tên_module_bị_thiếu
+   ```
 
-```bash
-uvicorn api:app --reload
-```
+2. **Lỗi Python không nhận diện:**
+   - Kiểm tra Python đã được thêm vào PATH
+   - Thử chạy: `python --version`
 
-Ứng dụng sẽ chạy mặc định tại địa chỉ: http://127.0.0.1:8000
+3. **Lỗi giao diện:**
+   - Đảm bảo PyQt5 đã được cài đặt đúng
+   - Thử cài lại: `pip uninstall PyQt5` sau đó `pip install PyQt5`
 
-Nếu muốn chuyển sang port khác thì dùng lệnh sau
+4. **Vấn đề với môi trường ảo:**
+   - Đảm bảo đã kích hoạt môi trường ảo trước khi cài đặt packages
+   - Nếu quên kích hoạt: `chess_env\Scripts\activate` (Windows) hoặc `source chess_env/bin/activate` (macOS/Linux)
 
-```bash
-uvicorn api:app --reload --port <chọn port (ví dụ: 8080)>   
-```
+## LIÊN HỆ VÀ HỖ TRỢ
 
-## API Endpoints
-
-### Trang chủ
-- `GET /`: Kiểm tra xem API có đang hoạt động không
-
-### Tìm nước đi tốt nhất
-- `POST /move/`: Nhận một trạng thái bàn cờ dưới dạng FEN và trả về nước đi tốt nhất
-
-## Sử dụng API
-
-Bạn cũng có thể sử dụng giao diện Swagger bằng cách thêm ```/docs``` vào cuối địa chỉ hoặc một công cụ như Postman .
-
-## Tham số API
-
-| Tham số | Loại | Mô tả |
-|---------|------|-------|
-| fen | string (query) | Trạng thái bàn cờ ở dạng FEN (Forsyth-Edwards Notation) |
-| depth | integer (query, optional) | Độ sâu tìm kiếm, mặc định là 3 |
+Nếu có thắc mắc hoặc phát hiện lỗi, vui lòng tạo issue trong repository hoặc liên hệ trực tiếp với nhóm phát triển.
